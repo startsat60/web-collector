@@ -1,0 +1,50 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 'Extract branch name'
+        shell: bash
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
+
+      - uses: actions/checkout@v3
+        name: 'Checkout repository'
+
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 18.x
+
+      - name: Prepare staging deployment
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          npm ci
+          NODE_ENV=${{ steps.extract_branch.outputs.branch }} npm run build
+        env:
+          CI: true
+          REACT_APP_TITLE: Starts at 60 Secure Backoffice - Staging
+          REACT_APP_BASE_API_URL: https://api-staging.startsat60.com
+          REACT_APP_COOKIE_NAME: id_token_staging
+          REACT_APP_LOGIN_URL: https://api-staging.startsat60.com/admin
+          REACT_APP_GROWL_TIMEOUT: 5000
+          REACT_APP_DEFAULT_PAGE_SIZE: 25
+          REACT_MAX_UPLOAD_SIZE_MEGABYTES: 30
+
+      - name: Prepare production deployment
+        if: github.ref == 'refs/heads/production'
+        run: |
+          npm ci
+          NODE_ENV=${{ steps.extract_branch.outputs.branch }} npm run build
+        env:
+          CI: true
+          REACT_APP_TITLE: Starts at 60 Secure Backoffice
+          REACT_APP_BASE_API_URL: https://api.startsat60.com
+          REACT_APP_COOKIE_NAME: id_token
+          REACT_APP_LOGIN_URL: https://api.startsat60.com/admin
+          REACT_APP_GROWL_TIMEOUT: 5000
+          REACT_APP_DEFAULT_PAGE_SIZE: 25
+          REACT_MAX_UPLOAD_SIZE_MEGABYTES: 30
