@@ -196,11 +196,11 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		// Type into search box
 		const usernameSelector = `[name='username']`;
 		await page.waitForSelector(usernameSelector);
-		await page.type(`[name='username']`, `steven`, { delay: 10 });
+		await page.type(`[name='username']`, `*****`, { delay: 10 });
 
 		const passwordSelector = `[name='password']`;
 		await page.waitForSelector(passwordSelector);
-		await page.type(`[name='password']`, `C34ThqRighX7`, { delay: 10 });
+		await page.type(`[name='password']`, `*****`, { delay: 10 });
 
 		const loginButtonSelector = `[type='submit']`;
 		await page.waitForSelector(loginButtonSelector);
