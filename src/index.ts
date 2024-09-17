@@ -1,7 +1,4 @@
 import puppeteer from 'puppeteer';
-import axios from 'axios';
-import { authApi } from './helpers/api';
-import { updateBookingConversion } from './helpers/endpoints';
 
 const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 (async () => {
@@ -15,7 +12,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 			console.log(`Getting booking data for ${referenceNumber}...`);
 
 			const bookingPage = await browser.newPage();
-			await bookingPage.goto(booking.url, { timeout: 60000 });
+			await bookingPage.goto(booking.url, { timeout: 120000 });
 
 			const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
 			await bookingPage.waitForSelector(bookingDetailsSelector);
@@ -52,7 +49,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 						detail = null;
 					}
 				}
-
+	
 				const elements = document.querySelector('#elementlist');
 				const portfoliosElements = elements.querySelectorAll('.portfolioelement');
 				const elementsData = [];
@@ -73,6 +70,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 						acc[label] = value;
 						return acc;
 					}, {}));
+
 					// console.log('Each element', { elementsData });
 				});
 
@@ -113,6 +111,26 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 				// console.log(payload);
 				return payload;//response;
 			});
+		
+			//	Costings
+			const costingsSelector = `[href*='costingbreakdown']`;
+			await bookingPage.waitForSelector(costingsSelector);
+			await bookingPage.click(costingsSelector);
+			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`);
+			const costingsData = await bookingPage.evaluate(() => {
+				const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
+				return {
+					nett: costingsElement[5].textContent.trim(),
+					gross: costingsElement[6].textContent.trim(),
+					apportioned: costingsElement[7].textContent.trim(),
+					unapportioned: costingsElement[8].textContent.trim(),
+					extra_margin: costingsElement[9].textContent.trim(),
+					commission: costingsElement[10].textContent.trim(),
+					gst: costingsElement[11].textContent.trim(),
+				};
+			});
+			bookingData[0].additional_data['total_costings'] = costingsData;
+			// console.log({ costingsData });
 
 			//	Primary Booking Passenger
 			const passengerSelector = `[href*='customer_view']`;
@@ -138,10 +156,8 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 			});
 			
 			bookingData[0].additional_data['primary_passenger'] = passengerData;
-			// console.log({
-			// 	...bookingData[0].additional_data,
-			// });
-		
+			// console.log({ passengerData });
+
 			const response = await fetch('https://api-staging.startsat60.com/v2/holidays/conversions', {
 				method: 'POST',
 				headers: {
@@ -153,7 +169,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 			.then((response) => response.json());
 	
 			// console.log({
-			// 	'API Response': response,
+			// 	// 'API Response': response,
 			// 	bookingData,
 			// });
 
@@ -188,10 +204,10 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 
 	try {
 		// Navigate the page to a URL
-		await page.goto(url, { timeout: 60000 });
+		await page.goto(url, { timeout: 120000 });
 
 		// Set screen size
-		await page.setViewport({width: 1920, height: 1080});
+		await page.setViewport({width: 1024, height: 768});
 
 		// Type into search box
 		const usernameSelector = `[name='username']`;
@@ -206,21 +222,29 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		await page.waitForSelector(loginButtonSelector);
 		await page.click(loginButtonSelector);
 
-		// Wait for the results page to load and display the results
-		// await page.waitForNavigation();
+		const d = new Date();
+		const day = d.getDate();
+		const month = d.getMonth()+1;
+		const year = d.getFullYear();
 
-		await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl`, { timeout: 60000 });
-		// await page.waitForNavigation();
+		await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?
+			reference=&firstname=&lastname=&tradingnameid=&datetype=created&
+			startdate-day=${day}&startdate-month=${month}&startdate-year=${year}&
+			enddate-day=${day}&enddate-month=${month}&enddate-year=${year}&
+			postcode=&telephone=&createdby=&branch=&bookinguser=&holidaymakerid=&
+			externalref=&elementtype=&suppliername=&supplierref=&status=&promocode=&
+			affiliate=&bookingteamid=&bookingbranchid=&customstatusid=&sourcecodeid=&
+			cruisevoyagecode=&from=&action=&submit=Search+Portfolios`, { timeout: 120000 });
 
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
 		await page.waitForSelector(listBookingsSelector).then(async () => await getBookings());
 
-		for (let i = 1; i <= 2; i++) {
-			console.log(`Getting bookings for page ${i}...`);
-			await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?start=${i*20}`, { timeout: 60000 });
-			page.waitForNavigation({ timeout: 60000 });
-			await page.waitForSelector(listBookingsSelector).then(async () => await getBookings());
-		}
+		// for (let i = 1; i <= 5; i++) {
+		// 	console.log(`Getting bookings for page ${i}...`);
+		// 	await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?start=${i*20}`, { timeout: 120000 });
+		// 	page.waitForNavigation({ timeout: 120000 });
+		// 	await page.waitForSelector(listBookingsSelector).then(async () => await getBookings());
+		// }
 
 	} catch (error) {
 		console.error('Error: ', error);
