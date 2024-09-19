@@ -2,11 +2,8 @@ import puppeteer from 'puppeteer';
 
 const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 (async () => {
-	// Launch the browser and open a new blank page
-	const browser = await puppeteer.launch({ headless: false });
-	const page = await browser.newPage();
 
-	const processBookings = async (bookingsData) => {
+	const processBookings = async (browser, bookingsData) => {
 		const bookings = await Promise.all(await bookingsData.map(async booking => {
 			const { referenceNumber } = booking;
 			console.log(`Getting booking data for ${referenceNumber}...`);
@@ -184,71 +181,110 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		}));
 	};
 
-	const getBookings = async () => {
+	const getBookings = async (browser, page) => {
+		const nextPageSelector = `.pages > .selpage + .page a:last-of-type`;
+		let hasNextPage = await page.$(nextPageSelector) !== null;
+		let isFirstPage = await page.$eval('.pages > .selpage', el => el.textContent) === '1';
 
-		const bookingsData = await page.evaluate(() => {
-			const rows = Array.from(document.querySelectorAll(`table.listtable > tbody > tr.listrow`));
-			return rows.map(row => {
-				const columns = row.querySelectorAll(`td[width='10%']`);
-				const bookingReference = columns[0].textContent.trim();
-				const bookingUrl = columns[1].querySelector(`a`).href;
-				return {
-					referenceNumber: bookingReference,
-					url: bookingUrl.replace('&shownote=1', '')
-				};
+		while (hasNextPage || isFirstPage) {
+			const currentPageBookingsData = await page.evaluate(() => {
+				const rows = Array.from(document.querySelectorAll(`table.listtable > tbody > tr.listrow`));
+				return rows.map(row => {
+					const columns = row.querySelectorAll(`td[width='10%']`);
+					const bookingReference = columns[0].textContent.trim();
+					const bookingUrl = columns[1].querySelector(`a`).href;
+					return {
+						referenceNumber: bookingReference,
+						url: bookingUrl.replace('&shownote=1', '')
+					};
+				});
 			});
-		});
 
-		await processBookings(bookingsData);
+			await processBookings(browser, currentPageBookingsData);
+
+			hasNextPage = await page.$(nextPageSelector) !== null;
+			isFirstPage = false;
+			if (hasNextPage) {
+				await Promise.all([
+					page.waitForNavigation({ waitUntil: 'networkidle0' }),
+					page.click(nextPageSelector)
+				]);
+				console.log('Navigating to next page...');
+			}
+		}
 	};
 
-	try {
-		// Navigate the page to a URL
-		await page.goto(url, { timeout: 120000 });
+	const launch = async (startDate?, endDate?) => {
 
-		// Set screen size
-		await page.setViewport({width: 1024, height: 768});
+		const reportStartDate = startDate ? new Date(startDate) : new Date();
+		const reportEndDate = endDate ? new Date(endDate) : new Date();
 
-		// Type into search box
-		const usernameSelector = `[name='username']`;
-		await page.waitForSelector(usernameSelector);
-		await page.type(`[name='username']`, `*****`, { delay: 10 });
+		const reportStartDay = reportStartDate.getDate();
+		const reportStartMonth = reportStartDate.getMonth()+1;
+		const reportStartYear = reportStartDate.getFullYear();
 
-		const passwordSelector = `[name='password']`;
-		await page.waitForSelector(passwordSelector);
-		await page.type(`[name='password']`, `*****`, { delay: 10 });
+		const reportEndDay = reportEndDate.getDate();
+		const reportEndMonth = reportEndDate.getMonth()+1;
+		const reportEndYear = reportEndDate.getFullYear();
 
-		const loginButtonSelector = `[type='submit']`;
-		await page.waitForSelector(loginButtonSelector);
-		await page.click(loginButtonSelector);
+		// Launch the browser and open a new blank page
+		const browser = await puppeteer.launch({ headless: false });
+		const page = await browser.newPage();
 
-		const d = new Date();
-		const day = d.getDate();
-		const month = d.getMonth()+1;
-		const year = d.getFullYear();
+		try {
+			// Navigate the page to a URL
+			await page.goto(url, { timeout: 120000 });
+	
+			// Set screen size
+			await page.setViewport({width: 1024, height: 768});
+	
+			// Type into search box
+			const usernameSelector = `[name='username']`;
+			await page.waitForSelector(usernameSelector);
+			await page.type(`[name='username']`, `****`, { delay: 10 });
+	
+			const passwordSelector = `[name='password']`;
+			await page.waitForSelector(passwordSelector);
+			await page.type(`[name='password']`, `****`, { delay: 10 });
+	
+			const loginButtonSelector = `[type='submit']`;
+			await page.waitForSelector(loginButtonSelector);
+			await page.click(loginButtonSelector);
+	
+			await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?
+				reference=&firstname=&lastname=&tradingnameid=&datetype=created&
+				startdate-day=${reportStartDay}&startdate-month=${reportStartMonth}&startdate-year=${reportStartYear}&
+				enddate-day=${reportEndDay}&enddate-month=${reportEndMonth}&enddate-year=${reportEndYear}&
+				postcode=&telephone=&createdby=&branch=&bookinguser=&holidaymakerid=&
+				externalref=&elementtype=&suppliername=&supplierref=&status=&promocode=&
+				affiliate=&bookingteamid=&bookingbranchid=&customstatusid=&sourcecodeid=&
+				cruisevoyagecode=&from=&action=&submit=Search+Portfolios`, { timeout: 120000 });
+	
+			const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
+			await page.waitForSelector(listBookingsSelector, { timeout: 5000 })
+				.then(async () => await getBookings(browser, page))
+				.catch((error) => console.error(`No bookings exist for ${reportStartDate}`));	
+		} catch (error) {
+			console.error('Error: ', error);
+		} finally {
+			if (page) {
+				await page.close();
+			};
+			await browser.close();
+		}
+	};
+	
+	const startDate = '2024-09-01';
+	const numberOfDays = 11;
+	const pauseBetweenIterations = 5000;
+	for (let i = 0; i < numberOfDays; i++) {
+		const reportStartDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
+		const reportEndDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
+		console.log(`\nProcessing report data for ${reportStartDate}...`);
+		await launch(reportStartDate, reportEndDate);
+		console.log(`\nPhew! Catching my breath for ${pauseBetweenIterations/1000} seconds...`);
 
-		await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?
-			reference=&firstname=&lastname=&tradingnameid=&datetype=created&
-			startdate-day=${day}&startdate-month=${month}&startdate-year=${year}&
-			enddate-day=${day}&enddate-month=${month}&enddate-year=${year}&
-			postcode=&telephone=&createdby=&branch=&bookinguser=&holidaymakerid=&
-			externalref=&elementtype=&suppliername=&supplierref=&status=&promocode=&
-			affiliate=&bookingteamid=&bookingbranchid=&customstatusid=&sourcecodeid=&
-			cruisevoyagecode=&from=&action=&submit=Search+Portfolios`, { timeout: 120000 });
-
-		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
-		await page.waitForSelector(listBookingsSelector).then(async () => await getBookings());
-
-		// for (let i = 1; i <= 5; i++) {
-		// 	console.log(`Getting bookings for page ${i}...`);
-		// 	await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?start=${i*20}`, { timeout: 120000 });
-		// 	page.waitForNavigation({ timeout: 120000 });
-		// 	await page.waitForSelector(listBookingsSelector).then(async () => await getBookings());
-		// }
-
-	} catch (error) {
-		console.error('Error: ', error);
+		await new Promise(resolve => setTimeout(resolve, pauseBetweenIterations));
 	}
 
-	await browser.close();
 })();
