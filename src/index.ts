@@ -155,7 +155,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 			bookingData[0].additional_data['primary_passenger'] = passengerData;
 			// console.log({ passengerData });
 
-			const response = await fetch('https://api-staging.startsat60.com/v2/holidays/conversions', {
+			const response = await fetch('https://api.startsat60.com/v2/holidays/conversions', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
