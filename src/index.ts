@@ -228,7 +228,7 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		const reportEndYear = reportEndDate.getFullYear();
 
 		// Launch the browser and open a new blank page
-		const browser = await puppeteer.launch({ headless: false });
+		const browser = await puppeteer.launch({ headless: true });
 		const page = await browser.newPage();
 
 		try {
@@ -274,8 +274,8 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		}
 	};
 	
-	const startDate = '2024-09-01';
-	const numberOfDays = 11;
+	const startDate = '2024-09-20';
+	const numberOfDays = 1;
 	const pauseBetweenIterations = 5000;
 	for (let i = 0; i < numberOfDays; i++) {
 		const reportStartDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
