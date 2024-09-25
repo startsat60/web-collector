@@ -1,14 +1,18 @@
 import puppeteer from 'puppeteer';
 
-const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
+const loginUrl = `https://travelat60.site.traveltek.net/extranet/login.pl`;
+const travelTekLogin = '****';
+const travelTekPassword = '****';
 (async () => {
 
-	const processBookings = async (browser, bookingsData) => {
-		const bookings = await Promise.all(await bookingsData.map(async booking => {
-			const { referenceNumber } = booking;
-			console.log(`Getting booking data for ${referenceNumber}...`);
+	const processBookings = async (browser, bookingsData, currentPage?) => {
+		console.log(`Getting data for ${bookingsData.length} bookings starting at ${bookingsData[bookingsData.length - 1].referenceNumber}...`);
 
-			const bookingPage = await browser.newPage();
+		const bookings = await Promise.all(await bookingsData.map(async booking => {
+			// const { referenceNumber } = booking;
+			// console.log(`Getting booking data for ${referenceNumber}...`);
+
+			const bookingPage = currentPage ?? await browser.newPage();
 			await bookingPage.goto(booking.url, { timeout: 120000 });
 
 			const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
@@ -228,12 +232,12 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		const reportEndYear = reportEndDate.getFullYear();
 
 		// Launch the browser and open a new blank page
-		const browser = await puppeteer.launch({ headless: true });
+		const browser = await puppeteer.launch({ headless: true, timeout: 0, });
 		const page = await browser.newPage();
 
 		try {
 			// Navigate the page to a URL
-			await page.goto(url, { timeout: 120000 });
+			await page.goto(loginUrl, { timeout: 120000 });
 	
 			// Set screen size
 			await page.setViewport({width: 1024, height: 768});
@@ -241,12 +245,12 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 			// Type into search box
 			const usernameSelector = `[name='username']`;
 			await page.waitForSelector(usernameSelector);
-			await page.type(`[name='username']`, '****', { delay: 10 });
-	
+			await page.type(`[name='username']`, travelTekLogin, { delay: 10 });
+
 			const passwordSelector = `[name='password']`;
 			await page.waitForSelector(passwordSelector);
-			await page.type(`[name='password']`, '****', { delay: 10 });
-	
+			await page.type(`[name='password']`, travelTekPassword, { delay: 10 });
+			
 			const loginButtonSelector = `[type='submit']`;
 			await page.waitForSelector(loginButtonSelector);
 			await page.click(loginButtonSelector);
@@ -267,16 +271,17 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 		} catch (error) {
 			console.error('Error: ', error);
 		} finally {
-			if (page) {
-				await page.close();
-			};
 			await browser.close();
 		}
 	};
 	
-	const startDate = '2024-09-20';
-	const numberOfDays = 1;
-	const pauseBetweenIterations = 5000;
+	//	Get bookings date within a specific range
+	const startDate = '2024-09-25';
+	const numberOfDays:number = 1; // January + February + March + April + May
+	let pauseBetweenIterations = 5000;
+	let startTime = new Date();
+	console.log(`\nStarting report data retrieval at ${startTime.toLocaleTimeString()}.`);
+
 	for (let i = 0; i < numberOfDays; i++) {
 		const reportStartDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
 		const reportEndDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
@@ -286,5 +291,57 @@ const url = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 
 		await new Promise(resolve => setTimeout(resolve, pauseBetweenIterations));
 	}
+	let endTime = new Date();
+	console.log(`\nFinished retrieving report data from ${startDate} for ${numberOfDays} days. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
 
+	const existingBookings = [
+		// {"referenceNumber":"SAS-11032","url":"https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?action=edit&id=83145042"},
+	];
+
+	if (existingBookings.length === 0) {
+		console.log(`\nNo historical tasks to do. Exiting...`);
+		process.exit();
+	}
+
+	//	Get all historical data and update it if necessary
+	const browser = await puppeteer.launch({ headless: true, timeout: 0 });
+	const page = await browser.newPage();
+		// Navigate the page to a URL
+	await page.goto(loginUrl, { timeout: 120000 });
+
+	// Set screen size
+	await page.setViewport({width: 1024, height: 768});
+
+	// Type into search box
+	const usernameSelector = `[name='username']`;
+	await page.waitForSelector(usernameSelector);
+	await page.type(`[name='username']`, travelTekLogin, { delay: 10 });
+
+	const passwordSelector = `[name='password']`;
+	await page.waitForSelector(passwordSelector);
+	await page.type(`[name='password']`, travelTekPassword, { delay: 10 });
+
+	const loginButtonSelector = `[type='submit']`;
+	await page.waitForSelector(loginButtonSelector);
+	await page.click(loginButtonSelector);
+	startTime = new Date();
+	console.log(`\nChecking and updating historical data and it looks like there are ${existingBookings.length} records to get. This takes a while so I am marking the start time as ${startTime.toLocaleTimeString()}.\n`);
+	await processBookings(browser, [existingBookings[0]], page);
+
+	try {
+		for (let i = 1; i < existingBookings.length; i++) {
+			await processBookings(browser, [existingBookings[i]]);
+			if (i === existingBookings.length - 1) {
+				console.log(`\nFinishing up...`);
+			}
+			//	Let's process this faster
+			await new Promise(resolve => setTimeout(resolve, 3000));
+		};
+	} catch (error) {
+		console.error('Error: ', error);
+	} finally {
+		endTime = new Date();
+		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
+		await browser.close();
+	}
 })();
