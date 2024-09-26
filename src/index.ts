@@ -3,10 +3,13 @@ import puppeteer from 'puppeteer';
 const loginUrl = `https://travelat60.site.traveltek.net/extranet/login.pl`;
 const travelTekLogin = '****';
 const travelTekPassword = '****';
+const bearerToken = '****';
+const apiUrlBase = 'https://api.startsat60.com/v3/admin/holidays/conversions';
+
 (async () => {
 
-	const processBookings = async (browser, bookingsData, currentPage?) => {
-		console.log(`Getting data for ${bookingsData.length} bookings starting at ${bookingsData[bookingsData.length - 1].referenceNumber}...`);
+	const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
+		showLogging && console.log(`Getting data for ${bookingsData.length} bookings starting at ${bookingsData[bookingsData.length - 1].referenceNumber}...`);
 
 		const bookings = await Promise.all(await bookingsData.map(async booking => {
 			// const { referenceNumber } = booking;
@@ -159,11 +162,11 @@ const travelTekPassword = '****';
 			bookingData[0].additional_data['primary_passenger'] = passengerData;
 			// console.log({ passengerData });
 
-			const response = await fetch('https://api.startsat60.com/v2/holidays/conversions', {
+			const response = await fetch(apiUrlBase, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					// 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTIyNzMwOCwidXVpZCI6ImY0MWVlYmRkLWQ3YTAtNDEyNS04MjI3LTI0MzQ4NWZmZTM4NyIsImVtYWlsIjoic3RldmVuLndvb2xzdG9uQHN0YXJ0c2F0NjAuY29tIiwiaWF0IjoxNzEwMTM2MzY1LCJleHAiOjE3NDE2NzIzNjV9.nlVNZj9C7hEpcv-f5CXbLUvjdnhbS4K-f-WQrCWWwSw'
+					'Authorization': `Bearer ${bearerToken}`
 				},
 				body: JSON.stringify(bookingData)
 			})
@@ -275,8 +278,9 @@ const travelTekPassword = '****';
 		}
 	};
 	
+	//#region Do Today's bookings
 	//	Get bookings date within a specific range
-	const startDate = '2024-09-25';
+	const startDate = new Date().toISOString().split('T')[0]; //'2024-09-25';
 	const numberOfDays:number = 1; // January + February + March + April + May
 	let pauseBetweenIterations = 5000;
 	let startTime = new Date();
@@ -287,16 +291,41 @@ const travelTekPassword = '****';
 		const reportEndDate = new Date(new Date(startDate).setDate(new Date(startDate).getDate() + i)).toISOString().split('T')[0];
 		console.log(`\nProcessing report data for ${reportStartDate}...`);
 		await launch(reportStartDate, reportEndDate);
-		console.log(`\nPhew! Catching my breath for ${pauseBetweenIterations/1000} seconds...`);
 
+		if (i === numberOfDays - 1) {
+			console.log(`\nFinishing up...`);
+			continue;
+		};
+
+		console.log(`\nPhew! Catching my breath for ${pauseBetweenIterations/1000} seconds...`);
 		await new Promise(resolve => setTimeout(resolve, pauseBetweenIterations));
 	}
 	let endTime = new Date();
-	console.log(`\nFinished retrieving report data from ${startDate} for ${numberOfDays} days. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
+	console.log(`\nFinished retrieving report data from ${startDate} for ${numberOfDays} days. This took ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString()) < 2 ? 'no time at all.' : `about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`}`);
+	//#endregion Do Today's bookings
 
-	const existingBookings = [
-		// {"referenceNumber":"SAS-11032","url":"https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?action=edit&id=83145042"},
-	];
+	//#region Do Historical bookings
+	const historicalDataStartDate = new Date(new Date().setFullYear(new Date().getFullYear() - 5)).toISOString().split('T')[0]; // 1 month ago
+	const historicalDataEndDate = new Date().toISOString().split('T')[0]; //'2024-09-25';
+
+	const existingBookings = await fetch(`${apiUrlBase}/search?
+		booked_on_from=${historicalDataStartDate}&
+		booked_on_to=${historicalDataEndDate}&
+		booking_status=Changed&booking_status=Query&booking_status=Open
+		`, {
+		method: 'GET',
+		headers: {
+			'Content-Type': 'application/json',
+			'Authorization': `Bearer ${bearerToken}`
+		},
+	})
+	.then((response) => response.json())
+	.then((response) => response.map(({ conversion_reference, traveltek_url }) => {
+		return {
+			referenceNumber: conversion_reference,
+			url: traveltek_url
+		}
+	}));
 
 	if (existingBookings.length === 0) {
 		console.log(`\nNo historical tasks to do. Exiting...`);
@@ -325,17 +354,28 @@ const travelTekPassword = '****';
 	await page.waitForSelector(loginButtonSelector);
 	await page.click(loginButtonSelector);
 	startTime = new Date();
-	console.log(`\nChecking and updating historical data and it looks like there are ${existingBookings.length} records to get. This takes a while so I am marking the start time as ${startTime.toLocaleTimeString()}.\n`);
-	await processBookings(browser, [existingBookings[0]], page);
+	console.log(`\nChecking and updating historical data from ${historicalDataStartDate} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
+	console.log(`\nSyncing ${existingBookings.length} historical bookings...`);
 
 	try {
-		for (let i = 1; i < existingBookings.length; i++) {
-			await processBookings(browser, [existingBookings[i]]);
-			if (i === existingBookings.length - 1) {
-				console.log(`\nFinishing up...`);
-			}
+		for (let i = 0; i < existingBookings.length; i+=10) {
+			const arrayOfPromises = [];
+			if (i < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i]], false));
+			if (i+1 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+1]], false));
+			if (i+2 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+2]], false));
+			if (i+3 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+3]], false));
+			if (i+4 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+4]], false));
+			if (i+5 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+5]], false));
+			if (i+6 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+6]], false));
+			if (i+7 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+7]], false));
+			if (i+8 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+8]], false));
+			if (i+9 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+9]], false));
+
+			console.log(`Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`);
+
+			await Promise.all(arrayOfPromises);
 			//	Let's process this faster
-			await new Promise(resolve => setTimeout(resolve, 3000));
+			// await new Promise(resolve => setTimeout(resolve, 3000));
 		};
 	} catch (error) {
 		console.error('Error: ', error);
@@ -344,4 +384,5 @@ const travelTekPassword = '****';
 		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
 		await browser.close();
 	}
+	//#endregion Do Historical bookings
 })();
