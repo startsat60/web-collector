@@ -1,12 +1,29 @@
+import { createSpinner } from "nanospinner";
 import { launchBrowser, timeout } from "../helpers/browser.js";
 import 'dotenv/config';
+import { dateAdd, formatDate, formatTime } from "../helpers/lib.js";
 
 const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
 const bearerToken = process.env.BEARER_TOKEN;
 const apiUrlBase = process.env.API_URL_BASE;
+const processingStartTime = process.env.DAILY_PROCESSING_START_TIME || '09:00';
+const processingEndTime = process.env.DAILY_PROCESSING_END_TIME || '21:30';
+const defaultSleepTimeInMs = process.env.DEFAULT_SLEEP_TIME_IN_MS ? 
+	Number(process.env.DEFAULT_SLEEP_TIME_IN_MS) : 
+	300000;
+
+export interface Credentials {
+	username: string;
+	password: string;
+};
 
 export const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
-	showLogging && console.log(`Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingsData[0].referenceNumber}...`);
+	let processBookingsSpinner = null,
+		loggingMessage = `Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingsData[0].referenceNumber}...`;
+
+	if (showLogging) {
+		processBookingsSpinner = createSpinner(loggingMessage).start();
+	};
 
 	const bookings = await Promise.all(await bookingsData.map(async booking => {
 		// const { referenceNumber } = booking;
@@ -184,6 +201,8 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 			}
 		};
 	}));
+
+	processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
 };
 
 export const getBookings = async (browser, page) => {
@@ -217,11 +236,6 @@ export const getBookings = async (browser, page) => {
 			console.log('Navigating to next page...');
 		}
 	}
-};
-
-export interface Credentials {
-	username: string;
-	password: string;
 };
 
 const doLogin = async (credentials: Credentials, page) => {
@@ -272,7 +286,7 @@ export const doTodaysBookings = async (credentials, browser?, startDate?, endDat
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
 		await page.waitForSelector(listBookingsSelector, { timeout: 5000 })
 			.then(async () => await getBookings(browser, page))
-			.catch((error) => console.error(`No bookings exist for ${reportStartDate}`));	
+			.catch((error) => console.error(`No bookings exist for ${formatDate(reportStartDate)}`));	
 	} catch (error) {
 		console.error('Error: ', error);
 	} finally {
@@ -313,6 +327,7 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	const startTime = new Date();
 	console.log(`\nChecking and updating historical data from ${historicalDataStartDate} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
 	console.log(`\nSyncing ${existingBookings.length} historical bookings...`);
+	let processBookingsSpinner = null;
 
 	try {
 		for (let i = 0; i < existingBookings.length; i+=10) {
@@ -328,12 +343,14 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 			if (i+8 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+8]], false));
 			if (i+9 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+9]], false));
 
-			console.log(`Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`);
+			const loggingMessage = `Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`;
+			processBookingsSpinner = createSpinner(loggingMessage).start();
 
 			await Promise.all(arrayOfPromises);
+			processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
 		};
 	} catch (error) {
-		console.error('Error: ', error);
+		processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
 	} finally {
 		const endTime = new Date();
 		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
@@ -342,26 +359,37 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 };
 
 export const runDailyBookingProcessing = async (credentials) => {
-	const processingStartHour = 9,
-		processingEndHour = 20,
-		defaultTimeoutInMs = 300000;
+	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
 
 	let dailyProcessingIsSleeping = undefined,
 		historicalProcessHasExecuted = false;
 
 	while (1 == 1) {
-		const currentHour = new Date().getHours();
-		if (currentHour >= processingStartHour && currentHour <= processingEndHour) {
+		const canStart = new Date() >= new Date(`${formatDate()} ${processingStartTime}`),
+			hasEnded = new Date() >= new Date(`${formatDate()} ${processingEndTime}`);
+
+		if (canStart && !hasEnded) {
 			dailyProcessingIsSleeping = false;
 			const browser = await launchBrowser();
 			try {
 				await doTodaysBookings(credentials, browser);
-				console.log(`Sleeping for a few minutes. Running again at ${new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toISOString().split('T')[0] + ' ' + new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toLocaleString().split(', ')[1]}...\n`);
+
+				//	Wait for a few seconds before running again because Traveltek API is slow
+				await timeout(5000);
+
+				//	update bookings made in the last 5 days
+				await runHistoricalBookingProcessing(
+					credentials, 
+					formatDate(dateAdd(new Date(), daysAgoToProcessDaily, 'days')), 
+					formatDate()
+				);
+
+				console.log(`Sleeping for a few minutes. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 			} catch (e) {
 				console.error('Exception occurred in daily bookings processing.', { e });
 			} finally {
 				browser && await browser.close();
-				await timeout(defaultTimeoutInMs);
+				await timeout(defaultSleepTimeInMs);
 			}
 		} else {
 			//	Only run historical bookings tasks outside the processing hours of the daily routine
@@ -371,8 +399,8 @@ export const runDailyBookingProcessing = async (credentials) => {
 					await runHistoricalBookingProcessing(credentials);
 					//	Turn if off after running once
 					historicalProcessHasExecuted = true;
-					!dailyProcessingIsSleeping && console.log(`\nHibernating bookings processing until ${processingStartHour}am...`);
-					dailyProcessingIsSleeping = true;	
+					!dailyProcessingIsSleeping && console.log(`\nHibernating bookings processing until ${processingStartTime}...`);
+					dailyProcessingIsSleeping = true;
 				} catch (err) {
 					console.error('Error occurred processing historical bookings.', { err });
 				}
@@ -382,7 +410,11 @@ export const runDailyBookingProcessing = async (credentials) => {
 };
 
 export const runHistoricalBookingProcessing = async (credentials, startDate?, endDate?) => {
-	const historyStartDate = startDate ?? '2019-06-01';	// Defaults back to day 1 or Traveltek data
+	const historyStartDate = startDate ?? 
+		(process.env.HISTORICAL_PROCESSING_DAY_0 ? 
+			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
+			'2019-06-01'
+		);	// Defaults back to day 1 or Traveltek data
 	const historyEndDate = endDate ?? new Date().toISOString().split('T')[0];
 
 	const browser = await launchBrowser();

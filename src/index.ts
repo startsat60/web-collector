@@ -3,7 +3,6 @@ import { runDailyBookingProcessing, runHistoricalBookingProcessing } from "./ser
 import { createSpinner } from 'nanospinner';
 
 (async () => {
-	const currentDate = new Date().toISOString().split('T')[0];
 	console.clear();
 	await welcome();
 	const processToRun = await mainmenu();

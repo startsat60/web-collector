@@ -92,7 +92,7 @@ export async function mainmenu() {
   const answers = await inquirer.prompt({
     type: 'list',
     name: 'processToRun',
-    message: 'Which processes would you like to run?\n',
+    message: 'Which process would you like to run?\n',
     choices: availableProcesses,
   });
   const spinner = createSpinner('Preparing...').start();
