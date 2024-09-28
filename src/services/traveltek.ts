@@ -2,6 +2,7 @@ import { createSpinner } from "nanospinner";
 import { launchBrowser, timeout } from "../helpers/browser.js";
 import 'dotenv/config';
 import { dateAdd, formatDate, formatTime } from "../helpers/lib.js";
+import chalk from "chalk";
 
 const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
 const bearerToken = process.env.BEARER_TOKEN;
@@ -358,11 +359,12 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	}
 };
 
-export const runDailyBookingProcessing = async (credentials) => {
+export const runDailyBookingProcessing = async (credentials,
+	historicalProcessHasExecuted = false
+) => {
 	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
 
-	let dailyProcessingIsSleeping = undefined,
-		historicalProcessHasExecuted = false;
+	let dailyProcessingIsSleeping = undefined;
 
 	while (1 == 1) {
 		const canStart = new Date() >= new Date(`${formatDate()} ${processingStartTime}`),
@@ -393,13 +395,16 @@ export const runDailyBookingProcessing = async (credentials) => {
 			}
 		} else {
 			//	Only run historical bookings tasks outside the processing hours of the daily routine
-			if (!historicalProcessHasExecuted) {
+			if (!historicalProcessHasExecuted || dailyProcessingIsSleeping === undefined) {
 				//	Check for historical bookings that need processing
 				try {
-					await runHistoricalBookingProcessing(credentials);
+					//	Only execute if the daily processing is hibernating and also 
+					//		bypass this if the daily processing was skipped because it was executed outside 
+					//		the processing hours
+					dailyProcessingIsSleeping !== undefined && await runHistoricalBookingProcessing(credentials);
 					//	Turn if off after running once
 					historicalProcessHasExecuted = true;
-					!dailyProcessingIsSleeping && console.log(`\nHibernating bookings processing until ${processingStartTime}...`);
+					!dailyProcessingIsSleeping && console.log(chalk.green(`\nHibernating bookings processing until ${processingStartTime}...`));
 					dailyProcessingIsSleeping = true;
 				} catch (err) {
 					console.error('Error occurred processing historical bookings.', { err });

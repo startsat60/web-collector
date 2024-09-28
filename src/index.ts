@@ -14,7 +14,8 @@ import { createSpinner } from 'nanospinner';
 				{
 					username: processToRun.credentials.username, 
 					password: processToRun.credentials.password
-				}
+				},
+				true
 			);
 			break;
 		case ProcessType.HISTORICAL:
