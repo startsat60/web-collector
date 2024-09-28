@@ -1,4 +1,4 @@
-import { authApi } from "./api";
+import { authApi } from "./api.js";
 
 export const updateBookingConversion = ({
 	payload,

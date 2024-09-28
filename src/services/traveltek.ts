@@ -1,13 +1,12 @@
-import { launchBrowser, timeout } from '../helpers/browser';
+import { launchBrowser, timeout } from "../helpers/browser.js";
+import 'dotenv/config';
 
-const loginUrl = `https://travelat60.site.traveltek.net/extranet/login.pl`;
-const travelTekLogin = '****'
-const travelTekPassword = '****';
-const bearerToken = '****';
-const apiUrlBase = 'https://api.startsat60.com/v3/holidays/conversions';
+const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
+const bearerToken = process.env.BEARER_TOKEN;
+const apiUrlBase = process.env.API_URL_BASE;
 
 export const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
-	showLogging && console.log(`Getting data for ${bookingsData.length} bookings starting at ${bookingsData[bookingsData.length - 1].referenceNumber}...`);
+	showLogging && console.log(`Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingsData[0].referenceNumber}...`);
 
 	const bookings = await Promise.all(await bookingsData.map(async booking => {
 		// const { referenceNumber } = booking;
@@ -220,24 +219,29 @@ export const getBookings = async (browser, page) => {
 	}
 };
 
-const doLogin = async (page) => {
+export interface Credentials {
+	username: string;
+	password: string;
+};
+
+const doLogin = async (credentials: Credentials, page) => {
 	page.goto(loginUrl, { timeout: 120000 });
 
 	// Type into search box
 	const usernameSelector = `[name='username']`;
 	await page.waitForSelector(usernameSelector);
-	await page.type(`[name='username']`, travelTekLogin, { delay: 10 });
+	await page.type(`[name='username']`, credentials.username, { delay: 10 });
 
 	const passwordSelector = `[name='password']`;
 	await page.waitForSelector(passwordSelector);
-	await page.type(`[name='password']`, travelTekPassword, { delay: 10 });
+	await page.type(`[name='password']`, credentials.password, { delay: 10 });
 	
 	const loginButtonSelector = `[type='submit']`;
 	await page.waitForSelector(loginButtonSelector);
 	await page.click(loginButtonSelector);
 };
 
-export const doTodaysBookings = async (browser?, startDate?, endDate?) => {
+export const doTodaysBookings = async (credentials, browser?, startDate?, endDate?) => {
 	const reportStartDate = startDate ? new Date(startDate) : new Date();
 	const reportEndDate = endDate ? new Date(endDate) : new Date();
 
@@ -254,7 +258,7 @@ export const doTodaysBookings = async (browser?, startDate?, endDate?) => {
 	const page = await browser.newPage();
 
 	try {
-		await doLogin(page);
+		await doLogin(credentials, page);
 
 		await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?
 			reference=&firstname=&lastname=&tradingnameid=&datetype=created&
@@ -276,10 +280,11 @@ export const doTodaysBookings = async (browser?, startDate?, endDate?) => {
 	}
 };
 
-export const doHistoricalBookings = async (historicalDataStartDate, historicalDataEndDate, browser?) => {
+export const doHistoricalBookings = async (credentials, historicalDataStartDate, historicalDataEndDate, browser?) => {
 	const existingBookings = await fetch(`${apiUrlBase}/search?
 		booked_on_from=${historicalDataStartDate}&
 		booked_on_to=${historicalDataEndDate}&
+		departure_date_from=${new Date().toISOString().split('T')[0]}&
 		booking_status=Changed&booking_status=Query&booking_status=Open
 		`, {
 		method: 'GET',
@@ -303,7 +308,7 @@ export const doHistoricalBookings = async (historicalDataStartDate, historicalDa
 
 	browser = browser ?? await launchBrowser();
 	const page = await browser.newPage();
-	await doLogin(page);
+	await doLogin(credentials, page);
 
 	const startTime = new Date();
 	console.log(`\nChecking and updating historical data from ${historicalDataStartDate} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
@@ -326,48 +331,63 @@ export const doHistoricalBookings = async (historicalDataStartDate, historicalDa
 			console.log(`Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`);
 
 			await Promise.all(arrayOfPromises);
-			//	Let's process this faster
-			// await new Promise(resolve => setTimeout(resolve, 3000));
 		};
 	} catch (error) {
 		console.error('Error: ', error);
 	} finally {
 		const endTime = new Date();
 		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
-		// await browser.close();
+		await browser.close();
 	}
 };
 
-export const runDailyBookingProcessing = async () => {
-	const processingConfig = {
-		processingStartHour: 9,
-		processingEndHour: 17,
-		isSleeping: false,
-		defaultTimeoutInMs: 60000,
-	};
+export const runDailyBookingProcessing = async (credentials) => {
+	const processingStartHour = 9,
+		processingEndHour = 20,
+		defaultTimeoutInMs = 300000;
+
+	let dailyProcessingIsSleeping = undefined,
+		historicalProcessHasExecuted = false;
 
 	while (1 == 1) {
 		const currentHour = new Date().getHours();
-		let { processingStartHour, processingEndHour, isSleeping, defaultTimeoutInMs } = processingConfig;
 		if (currentHour >= processingStartHour && currentHour <= processingEndHour) {
-			if (isSleeping) {
-				console.log('Waking up...');
-				isSleeping = false;
-			};
+			dailyProcessingIsSleeping = false;
 			const browser = await launchBrowser();
-
 			try {
-				await doTodaysBookings(browser);
-				console.log(`\nSleeping for a few minutes. Running again at ${new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toISOString().split('T')[0] + ' ' + new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toLocaleString().split(', ')[1]}...`);
+				await doTodaysBookings(credentials, browser);
+				console.log(`Sleeping for a few minutes. Running again at ${new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toISOString().split('T')[0] + ' ' + new Date(new Date().setMinutes(new Date().getMinutes() + (defaultTimeoutInMs/1000/60))).toLocaleString().split(', ')[1]}...\n`);
 			} catch (e) {
 				console.error('Exception occurred in daily bookings processing.', { e });
 			} finally {
 				browser && await browser.close();
+				await timeout(defaultTimeoutInMs);
 			}
 		} else {
-			!isSleeping && console.log(`\nSleeping until ${processingStartHour}am...`);
-			isSleeping = true;
+			//	Only run historical bookings tasks outside the processing hours of the daily routine
+			if (!historicalProcessHasExecuted) {
+				//	Check for historical bookings that need processing
+				try {
+					await runHistoricalBookingProcessing(credentials);
+					//	Turn if off after running once
+					historicalProcessHasExecuted = true;
+					!dailyProcessingIsSleeping && console.log(`\nHibernating bookings processing until ${processingStartHour}am...`);
+					dailyProcessingIsSleeping = true;	
+				} catch (err) {
+					console.error('Error occurred processing historical bookings.', { err });
+				}
+			}
 		}
-		await timeout(defaultTimeoutInMs);
 	}
+};
+
+export const runHistoricalBookingProcessing = async (credentials, startDate?, endDate?) => {
+	const historyStartDate = startDate ?? '2019-06-01';	// Defaults back to day 1 or Traveltek data
+	const historyEndDate = endDate ?? new Date().toISOString().split('T')[0];
+
+	const browser = await launchBrowser();
+	await doHistoricalBookings(credentials, historyStartDate, historyEndDate, browser);
+	browser && await browser.close();
+	//	Let's allow some time to pass before trying again
+	await timeout(10000);
 };

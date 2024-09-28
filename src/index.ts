@@ -1,14 +1,34 @@
-import { runDailyBookingProcessing } from './services/traveltek';
+import { mainmenu, welcome, ProcessType } from "./helpers/menu.js";
+import { runDailyBookingProcessing, runHistoricalBookingProcessing } from "./services/traveltek.js";
+import { createSpinner } from 'nanospinner';
 
 (async () => {
 	const currentDate = new Date().toISOString().split('T')[0];
-	runDailyBookingProcessing();
-	
-	// const historicalDataStartDate = new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0]; // 1 month ago
-	// const historicalDataEndDate = new Date().toISOString().split('T')[0]; //'2024-09-25';
-	// await Promise.all([
-	// 	//doTodaysBookings(),
-	// 	doHistoricalBookings(historicalDataStartDate, historicalDataEndDate),
-	// 	timeout(60000),
-	// ]);
+	console.clear();
+	await welcome();
+	const processToRun = await mainmenu();
+
+	switch (processToRun.process) {
+		case ProcessType.DAILY:
+			createSpinner('Running Daily Booking Processing...').start().stop();
+			await runDailyBookingProcessing(
+				{
+					username: processToRun.credentials.username, 
+					password: processToRun.credentials.password
+				}
+			);
+			break;
+		case ProcessType.HISTORICAL:
+			createSpinner('Running Historical Booking Processing...').start().stop();
+			await runHistoricalBookingProcessing(
+				{
+					username: processToRun.credentials.username, 
+					password: processToRun.credentials.password
+				},
+				processToRun.dateRange.startDate, 
+				processToRun.dateRange.endDate);
+			break;
+		default:
+			break;
+	};
 })();
