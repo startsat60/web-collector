@@ -359,15 +359,23 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	}
 };
 
+/**
+ * Run the Traveltek daily booking routine.
+ * This routine runs during the periods defined in the environment variables
+ * @param credentials Traveltek credentials
+ * @param historicalProcessHasExecuted Allows the historical process to be bypassed
+ */
 export const runDailyBookingProcessing = async (credentials,
 	historicalProcessHasExecuted = false
 ) => {
-	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
-
+	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0,
+		daysToRun = process.env.DAILY_PROCESSING_DAYS_TO_RUN ? 
+			process.env.DAILY_PROCESSING_DAYS_TO_RUN.split(',').map((d) => Number(d)) : [];
 	let dailyProcessingIsSleeping = undefined;
 
 	while (1 == 1) {
-		const canStart = new Date() >= new Date(`${formatDate()} ${processingStartTime}`),
+		const canStart = (new Date() >= new Date(`${formatDate()} ${processingStartTime}`) 
+			&& daysToRun.includes(new Date().getDay())),
 			hasEnded = new Date() >= new Date(`${formatDate()} ${processingEndTime}`);
 
 		if (canStart && !hasEnded) {
