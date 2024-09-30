@@ -1,6 +1,6 @@
 import inquirer from "inquirer";
 import chalk from "chalk";
-import { sleep } from "./lib.js";
+import { dateAdd, formatDate, sleep } from "./lib.js";
 import { createSpinner } from "nanospinner";
 
 export async function welcome() {
@@ -20,7 +20,7 @@ export const availableProcesses = [
   { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range' },
 ];
 
-export const promptForDates = async (startDate?, endDate?): Promise<{ startDate: string; endDate: string }> => {
+export const promptForDates = async (startDate, endDate?): Promise<{ startDate: string; endDate: string }> => {
   console.log(chalk.yellow('Please enter a date range to continue.'));
   const dateAnswers = await inquirer.prompt([
     {
@@ -40,7 +40,7 @@ export const promptForDates = async (startDate?, endDate?): Promise<{ startDate:
       type: 'input',
       message: 'Enter the end date (YYYY-MM-DD):',
       default: () => {
-        return endDate ?? new Date().toISOString().split('T')[0];
+        return endDate ?? formatDate();
       },
       validate: (input) => {
         const isValid = /^\d{4}-\d{2}-\d{2}$/.test(input);
@@ -85,8 +85,8 @@ export const promptForCredentials = async (): Promise<{ username: string; passwo
 
 export async function mainmenu() {
   let credentials = null;
-	const currentDate = new Date().toISOString().split('T')[0];
-	const threeDaysAgo = new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
+	const currentDate = formatDate();
+	const threeDaysAgo = dateAdd(new Date(), -3, 'days'); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
 	let dateRange = { startDate: currentDate, endDate: currentDate };
 
   const answers = await inquirer.prompt({
