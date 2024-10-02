@@ -359,6 +359,8 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	}
 };
 
+const canStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
+const hasEnded = (processingEndTime) => (new Date() >= new Date(`${formatDate()} ${processingEndTime}`));
 /**
  * Run the Traveltek daily booking routine.
  * This routine runs during the periods defined in the environment variables
@@ -371,15 +373,13 @@ export const runDailyBookingProcessing = async (credentials,
 	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0,
 		daysToRun = process.env.DAILY_PROCESSING_DAYS_TO_RUN ? 
 			process.env.DAILY_PROCESSING_DAYS_TO_RUN.split(',').map((d) => Number(d)) : [];
-	let dailyProcessingIsSleeping = undefined;
+	let allProcessesAreHibernating = false;
 
 	while (1 == 1) {
-		const canStart = (new Date() >= new Date(`${formatDate()} ${processingStartTime}`) 
-			&& daysToRun.includes(new Date().getDay())),
-			hasEnded = new Date() >= new Date(`${formatDate()} ${processingEndTime}`);
+		const canStartDailyProcess = (canStart(processingStartTime) && daysToRun.includes(new Date().getDay())),
+			hasDailyProcessEnded = hasEnded(processingEndTime);
 
-		if (canStart && !hasEnded) {
-			dailyProcessingIsSleeping = false;
+		if (canStartDailyProcess && !hasDailyProcessEnded) {
 			const browser = await launchBrowser();
 			try {
 				await doTodaysBookings(credentials, browser);
@@ -391,10 +391,15 @@ export const runDailyBookingProcessing = async (credentials,
 				await runHistoricalBookingProcessing(
 					credentials, 
 					formatDate(dateAdd(new Date(), daysAgoToProcessDaily, 'days')), 
-					formatDate()
+					formatDate(dateAdd(new Date(), -1, 'days'))
 				);
 
-				console.log(`Sleeping for a few minutes. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
+				if (hasEnded(processingEndTime)) {
+					historicalProcessHasExecuted = false;
+					console.log(`\nDaily processing end time has passed. Checking if historical processor should run next...`);
+				} else {
+					console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s). Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
+				}
 			} catch (e) {
 				console.error('Exception occurred in daily bookings processing.', { e });
 			} finally {
@@ -403,20 +408,24 @@ export const runDailyBookingProcessing = async (credentials,
 			}
 		} else {
 			//	Only run historical bookings tasks outside the processing hours of the daily routine
-			if (!historicalProcessHasExecuted || dailyProcessingIsSleeping === undefined) {
+			if (!historicalProcessHasExecuted && !allProcessesAreHibernating) {
 				//	Check for historical bookings that need processing
 				try {
 					//	Only execute if the daily processing is hibernating and also 
 					//		bypass this if the daily processing was skipped because it was executed outside 
 					//		the processing hours
-					dailyProcessingIsSleeping !== undefined && await runHistoricalBookingProcessing(credentials);
+					await runHistoricalBookingProcessing(credentials);
 					//	Turn if off after running once
 					historicalProcessHasExecuted = true;
-					!dailyProcessingIsSleeping && console.log(chalk.green(`\nHibernating bookings processing until ${processingStartTime}...`));
-					dailyProcessingIsSleeping = true;
 				} catch (err) {
 					console.error('Error occurred processing historical bookings.', { err });
 				}
+			} else {
+				if (!allProcessesAreHibernating) {
+					console.log(chalk.green(`\nHibernating bookings processing until ${processingStartTime}...`));
+					allProcessesAreHibernating = true;	
+				}
+				await timeout(defaultSleepTimeInMs);
 			}
 		}
 	}
