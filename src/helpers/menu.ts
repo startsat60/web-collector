@@ -8,7 +8,7 @@ export async function welcome() {
   ${chalk.cyan(`
   ..####...######...####...#####...######...####........####...######........##.....####..
   .##........##....##..##..##..##....##....##..........##..##....##.........##.....##..##.
-  ..####.....##....######..#####.....##.....####.......######....##........#####...######.
+  ..####.....##....######..#####.....##.....####.......######....##........#####...##..##.
   .....##....##....##..##..##..##....##........##......##..##....##........##..##..##..##.
   ..####.....##....##..##..##..##....##.....####.......##..##....##.........####....####..
   `)}
@@ -93,7 +93,7 @@ export const promptForCredentials = async (): Promise<{ username: string; passwo
 export async function mainmenu() {
   let credentials = null;
 	const currentDate = formatDate();
-	const threeDaysAgo = dateAdd(new Date(), -3, 'days'); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
+	const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
 	let dateRange = { startDate: currentDate, endDate: currentDate };
 
   const answers = await inquirer.prompt({
@@ -110,7 +110,7 @@ export async function mainmenu() {
     credentials = await promptForCredentials();
 
     if (answers.processToRun === ProcessType.HISTORICAL) {
-      dateRange = await promptForDates(threeDaysAgo, currentDate);
+      dateRange = await promptForDates(day_0, currentDate);
     };  
   }
 

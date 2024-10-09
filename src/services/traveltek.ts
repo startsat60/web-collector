@@ -151,12 +151,34 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 		bookingData[0].additional_data['total_costings'] = costingsData;
 		// console.log({ costingsData });
 
-		//	Primary Booking Passenger
+		//	Receipts
+		const receiptsSelector = `[href*='receipts']`;
+		await bookingPage.waitForSelector(receiptsSelector);
+		await bookingPage.click(receiptsSelector);
+		await bookingPage.waitForSelector(`[href*='cardpayment.pl']`);
+		const receiptsData = await bookingPage.evaluate(() => {
+			const receiptsRows = document.querySelectorAll(`.listtable .listrow`);
+			const receipts = [];
+			receiptsRows.forEach((receipt, index) => {
+				receipts.push({
+					id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+					reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+					date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+					payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
+					total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
+					card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+					unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
+				})
+			});
+			return receipts;
+		});
+		bookingData[0].additional_data['receipts'] = receiptsData ?? [];
+
+		//	Primary Booking Passenger - this navigates to a new page so do all booking processing before this
 		const passengerSelector = `[href*='customer_view']`;
 		await bookingPage.waitForSelector(passengerSelector);
 		await bookingPage.click(passengerSelector);
 		await bookingPage.waitForSelector(`.boxstyle1`);
-
 		const passengerData = await bookingPage.evaluate(() => {
 			const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
 			const passengerName = passengerContactDetailsElement[1].textContent.trim();
@@ -173,7 +195,6 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 				postcode: passengerPostcode,
 			};
 		});
-		
 		bookingData[0].additional_data['primary_passenger'] = passengerData;
 		// console.log({ passengerData });
 
@@ -193,12 +214,12 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 		// 	bookingData,
 		// });
 
-		await bookingPage.close();
+		bookingPage && await bookingPage.close();
 		return {
 			...bookingData,
 			additional_data: {
 				...bookingData['additional_data'],
-				primary_passenger: passengerData 
+				primary_passenger: passengerData,
 			}
 		};
 	}));
@@ -291,7 +312,7 @@ export const doTodaysBookings = async (credentials, browser?, startDate?, endDat
 	} catch (error) {
 		console.error('Error: ', error);
 	} finally {
-		// await browser.close();
+		browser && await browser.close();
 	}
 };
 
@@ -355,12 +376,12 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	} finally {
 		const endTime = new Date();
 		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
-		await browser.close();
+		browser && await browser.close();
 	}
 };
 
-const canStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
-const hasEnded = (processingEndTime) => (new Date() >= new Date(`${formatDate()} ${processingEndTime}`));
+const dailyProcessingCanStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
+const dailyProcessingHasEnded = (processingEndTime) => (new Date() >= new Date(`${formatDate()} ${processingEndTime}`));
 /**
  * Run the Traveltek daily booking routine.
  * This routine runs during the periods defined in the environment variables
@@ -376,8 +397,8 @@ export const runDailyBookingProcessing = async (credentials,
 	let allProcessesAreHibernating = false;
 
 	while (1 == 1) {
-		const canStartDailyProcess = (canStart(processingStartTime) && daysToRun.includes(new Date().getDay())),
-			hasDailyProcessEnded = hasEnded(processingEndTime);
+		const canStartDailyProcess = (dailyProcessingCanStart(processingStartTime)),// && daysToRun.includes(new Date().getDay())),
+			hasDailyProcessEnded = dailyProcessingHasEnded(processingEndTime);
 
 		if (canStartDailyProcess && !hasDailyProcessEnded) {
 			const browser = await launchBrowser();
@@ -385,7 +406,7 @@ export const runDailyBookingProcessing = async (credentials,
 				await doTodaysBookings(credentials, browser);
 
 				//	Wait for a few seconds before running again because Traveltek API is slow
-				await timeout(5000);
+				await timeout(15000);
 
 				//	update bookings made in the last 5 days
 				await runHistoricalBookingProcessing(
@@ -394,7 +415,7 @@ export const runDailyBookingProcessing = async (credentials,
 					formatDate(dateAdd(new Date(), -1, 'days'))
 				);
 
-				if (hasEnded(processingEndTime)) {
+				if (dailyProcessingHasEnded(processingEndTime)) {
 					historicalProcessHasExecuted = false;
 					console.log(`\nDaily processing end time has passed. Checking if historical processor should run next...`);
 				} else {
@@ -437,7 +458,7 @@ export const runHistoricalBookingProcessing = async (credentials, startDate?, en
 			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
 			'2019-06-01'
 		);	// Defaults back to day 1 or Traveltek data
-	const historyEndDate = endDate ?? new Date().toISOString().split('T')[0];
+	const historyEndDate = endDate ?? formatDate();
 
 	const browser = await launchBrowser();
 	await doHistoricalBookings(credentials, historyStartDate, historyEndDate, browser);
