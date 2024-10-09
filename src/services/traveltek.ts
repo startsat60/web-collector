@@ -157,8 +157,12 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 		await bookingPage.click(receiptsSelector);
 		await bookingPage.waitForSelector(`[href*='cardpayment.pl']`);
 		const receiptsData = await bookingPage.evaluate(() => {
-			const receiptsRows = document.querySelectorAll(`.listtable .listrow`);
 			const receipts = [];
+			const receiptTables = document.querySelectorAll(`.listtable`);
+			if (receiptTables.length === 0) return receipts;
+
+			//	Receipts
+			const receiptsRows = receiptTables[0].querySelectorAll(`.listrow`);
 			receiptsRows.forEach((receipt, index) => {
 				receipts.push({
 					id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
@@ -168,7 +172,24 @@ export const processBookings = async (browser, bookingsData, showLogging = true,
 					total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
 					card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
 					unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
-				})
+					type: 'receipt',
+				});
+			});
+			if (receiptTables.length === 1) return receipts;
+
+			//	Refunds
+			const refundRows = receiptTables[1].querySelectorAll(`.listrow`);
+			refundRows.forEach((receipt, index) => {
+				receipts.push({
+					id: receipt.querySelector(`td:nth-child(1)`).textContent.trim(),
+					reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+					date: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+					payment_method: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+					total_value: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+					card_fee: null,
+					unapportioned_amount: null,
+					type: 'refund',
+				});
 			});
 			return receipts;
 		});
