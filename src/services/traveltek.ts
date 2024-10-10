@@ -340,10 +340,10 @@ export const doTodaysBookings = async (credentials, browser?, startDate?, endDat
 export const doHistoricalBookings = async (credentials, historicalDataStartDate, historicalDataEndDate, browser?) => {
 	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&
 	// 	departure_date_from=${new Date().toISOString().split('T')[0]}&
-	// 	booking_status=Changed&booking_status=Query&booking_status=Open`;
+	// 	booking_status=Changed&booking_status=Query&booking_status=Open&sort_by_order=created_date asc`;
 
 	//	Do everything - debugging
-	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}`;
+	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc`;
 
 	const existingBookings = await fetch(fetchUrl, {
 		method: 'GET',
@@ -375,7 +375,7 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	let processBookingsSpinner = null;
 
 	try {
-		for (let i = 0; i < existingBookings.length; i+=20) {
+		for (let i = 0; i < existingBookings.length; i+=10) {
 			const arrayOfPromises = [];
 			if (i < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i]], false));
 			if (i+1 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+1]], false));
@@ -387,16 +387,6 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 			if (i+7 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+7]], false));
 			if (i+8 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+8]], false));
 			if (i+9 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+9]], false));
-			if (i+10 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+10]], false));
-			if (i+11 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+11]], false));
-			if (i+12 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+12]], false));
-			if (i+13 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+13]], false));
-			if (i+14 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+14]], false));
-			if (i+15 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+15]], false));
-			if (i+16 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+16]], false));
-			if (i+17 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+17]], false));
-			if (i+18 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+18]], false));
-			if (i+19 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+19]], false));
 
 			const loggingMessage = `Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`;
 			processBookingsSpinner = createSpinner(loggingMessage).start();
