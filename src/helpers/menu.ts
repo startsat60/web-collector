@@ -20,11 +20,13 @@ export async function welcome() {
 export enum ProcessType {
   DAILY = 'DAILY',
   HISTORICAL = 'HISTORICAL',
+  SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
 };
 
 export const availableProcesses = [
   { value: ProcessType.DAILY, name: 'Today\'s Booking Processing (Runs in a loop)' },
   { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range' },
+  { value: ProcessType.SPECIFIC_BOOKING, name: 'Booking Processing for a Specific Booking by URL' },
 ];
 
 export const promptForDates = async (startDate, endDate?): Promise<{ startDate: string; endDate: string }> => {
@@ -91,10 +93,12 @@ export const promptForCredentials = async (): Promise<{ username: string; passwo
 };
 
 export async function mainmenu() {
-  let credentials = null;
 	const currentDate = formatDate();
-	const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
-	let dateRange = { startDate: currentDate, endDate: currentDate };
+  let credentials = null,
+    dateRange = { startDate: currentDate, endDate: currentDate },
+    bookingUrl = null;
+
+  const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
 
   const answers = await inquirer.prompt({
     type: 'list',
@@ -106,17 +110,31 @@ export async function mainmenu() {
 	await sleep(1000);
   spinner.stop();
 
-  if (answers.processToRun === ProcessType.HISTORICAL || answers.processToRun === ProcessType.DAILY) {
+  if (answers.processToRun === ProcessType.HISTORICAL || answers.processToRun === ProcessType.DAILY) {  
     credentials = await promptForCredentials();
-
     if (answers.processToRun === ProcessType.HISTORICAL) {
       dateRange = await promptForDates(day_0, currentDate);
-    };  
+    };
+  }
+
+  if (answers.processToRun === ProcessType.SPECIFIC_BOOKING) {
+    credentials = await promptForCredentials();
+    bookingUrl = await inquirer.prompt([
+      {
+        name: 'bookingUrl',
+        type: 'input',
+        message: 'Enter the booking URL:',
+        validate: (input) => {
+          return input.length > 0 || 'URL cannot be empty';
+        },
+      },
+    ]);
   }
 
   return {
     process: answers.processToRun,
     credentials,
     dateRange,
+    ...bookingUrl,
   };
 };

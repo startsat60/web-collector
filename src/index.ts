@@ -1,5 +1,5 @@
 import { mainmenu, welcome, ProcessType } from "./helpers/menu.js";
-import { runDailyBookingProcessing, runHistoricalBookingProcessing } from "./services/traveltek.js";
+import { doLogin, processBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek.js";
 import { createSpinner } from 'nanospinner';
 
 (async () => {
@@ -27,6 +27,10 @@ import { createSpinner } from 'nanospinner';
 				},
 				processToRun.dateRange.startDate, 
 				processToRun.dateRange.endDate);
+			break;
+		case ProcessType.SPECIFIC_BOOKING:
+			const { credentials, bookingUrl } = processToRun;
+			await runSpecificBookingProcessing(credentials, bookingUrl);
 			break;
 		default:
 			break;
