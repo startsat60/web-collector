@@ -1,6 +1,6 @@
 import inquirer from "inquirer";
 import chalk from "chalk";
-import { dateAdd, formatDate, sleep } from "./lib.js";
+import { formatDate, sleep } from "./lib.js";
 import { createSpinner } from "nanospinner";
 
 export async function welcome() {
@@ -21,12 +21,15 @@ export enum ProcessType {
   DAILY = 'DAILY',
   HISTORICAL = 'HISTORICAL',
   SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
+  LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
 };
 
 export const availableProcesses = [
-  { value: ProcessType.DAILY, name: 'Today\'s Booking Processing (Runs in a loop)' },
-  { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range' },
-  { value: ProcessType.SPECIFIC_BOOKING, name: 'Booking Processing for a Specific Booking by URL' },
+  { value: ProcessType.DAILY, name: 'Live Traveltek Booking Processing (Runs in a loop)' },
+  { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range (Sync)' },
+  { value: ProcessType.SPECIFIC_BOOKING, name: 'Live Traveltek Processing by specific booking URL' },
+  { value: ProcessType.LIVE_DATE_RANGE, name: 'Live Traveltek Processing by date range' },
+
 ];
 
 export const promptForDates = async (startDate, endDate?): Promise<{ startDate: string; endDate: string }> => {
@@ -110,12 +113,20 @@ export async function mainmenu() {
 	await sleep(1000);
   spinner.stop();
 
-  if (answers.processToRun === ProcessType.HISTORICAL || answers.processToRun === ProcessType.DAILY) {  
+  if (answers.processToRun === ProcessType.HISTORICAL || 
+    answers.processToRun === ProcessType.DAILY || 
+    answers.processToRun === ProcessType.LIVE_DATE_RANGE
+  ) {
     credentials = await promptForCredentials();
+    if (answers.processToRun === ProcessType.DAILY || 
+      answers.processToRun === ProcessType.LIVE_DATE_RANGE
+    ) {
+      dateRange = await promptForDates(currentDate, currentDate);
+    };
     if (answers.processToRun === ProcessType.HISTORICAL) {
       dateRange = await promptForDates(day_0, currentDate);
     };
-  }
+  };
 
   if (answers.processToRun === ProcessType.SPECIFIC_BOOKING) {
     credentials = await promptForCredentials();

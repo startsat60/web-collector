@@ -20,231 +20,265 @@ export interface Credentials {
 
 export const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
 	let processBookingsSpinner = null,
-		loggingMessage = `Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingsData[0].referenceNumber ?? bookingsData[0].url}...`;
+		bookingReferenceNumber = bookingsData[0].referenceNumber ?? bookingsData[0].url,
+		loggingMessage = `Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingReferenceNumber}...`,
+		errors = [];
 
 	if (showLogging) {
 		processBookingsSpinner = createSpinner(loggingMessage).start();
 	};
 
-	const bookings = await Promise.all(await bookingsData.map(async booking => {
-		// const { referenceNumber } = booking;
-		// console.log(`Getting booking data for ${referenceNumber}...`);
-
-		const bookingPage = currentPage ?? await browser.newPage();
-		await bookingPage.goto(booking.url, { timeout: 120000 });
-
-		const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
-		await bookingPage.waitForSelector(bookingDetailsSelector);
-
-		const bookingData = await bookingPage.evaluate(async () => {
-			const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
-
-			const conversion_reference = detailsTable[1].textContent.trim();
-			let bookingPayload = [], detail = null;
-			
-			bookingPayload.push({ label: 'traveltek_url', value: document.location.href });
-
-			if (detailsTable.length > 0) {	
-				for (let i=0; i < detailsTable.length; i++) {
-					const isEven = i % 2 == 0;
-					const child = detailsTable[i];
-					if (isEven) {
-						detail = {
-							...detail,
-							label: child.textContent.trim().toLowerCase().replace(/\s+/g, '_')
-						};
-						continue;
-					};
-			
-					if (!detail.label.trim()) {
-						detail = null;
-						continue;
-					};
-					
-					bookingPayload.push({
-						...detail,
-						value: child.textContent.trim()
-					});
-					detail = null;
-				}
-			}
-
-			const elements = document.querySelector('#elementlist');
-			const portfoliosElements = elements.querySelectorAll('.portfolioelement');
-			const elementsData = [];
-			portfoliosElements.forEach((portfoliosElement, index) => {
-				const portfolio = portfoliosElement.querySelectorAll('.listtable tr td');
-				const hiddenDetails = portfoliosElement.querySelectorAll('& > div table tr td');
-
-				const element = [
-					{ label: 'provider', value: portfolio[6].textContent.trim() },
-					{ label: 'provider_reference', value: portfolio[7].textContent.trim() },
-					{ label: 'type', value: portfolio[3].textContent.trim() },
-					{ label: 'net', value: portfolio[9].textContent.trim() },
-					{ label: 'gross', value: portfolio[10].textContent.trim(), },
-					{ label: hiddenDetails[0].textContent.trim().toLowerCase().replace(/\s+/g, '_'), value: hiddenDetails[1].textContent.trim(), },
-					{ label: hiddenDetails[2].textContent.trim().toLowerCase().replace(/\s+/g, '_'), value: hiddenDetails[3].textContent.trim(), },
-				];
-				elementsData.push(element.reduce((acc, { label, value }) => {
-					acc[label] = value;
-					return acc;
-				}, {}));
-
-				// console.log('Each element', { elementsData });
-			});
-
-			bookingPayload = {
-				...bookingPayload.reduce((acc, { label, value }) => {
-					acc[label] = value;
-					return acc;
-				}, {}),
-				...{ elements: elementsData }
-			};
-			// console.log({ data: portfolioData });
-
-			//	All travellers
-			const bookingPassengerListSelector = `#financial-details + h3 + .listtable .listrow`;
-			const bookingPassengerList = document.querySelectorAll(bookingPassengerListSelector);
-			const passengers = [];
-			bookingPassengerList.forEach((passenger, index) => {
-				const passengerName = passenger.querySelector(`td:nth-child(2)`).textContent.trim();
-				const passengerFare = passenger.querySelector(`td:nth-child(4)`).textContent.trim();
-				const passengerPhone = passenger.querySelector(`td:nth-child(6)`).textContent.trim();
-				const passengerEmail = passenger.querySelector(`td:nth-child(8)`).textContent.trim();
-
-				passengers.push({
-					name: passengerName,
-					fare: passengerFare,
-					phone: passengerPhone,
-					email: passengerEmail,
-				});
-			});
-			bookingPayload['passengers'] = passengers;
-
-			const payload = [
-				{
-					conversion_reference,
-					additional_data: bookingPayload
-				}
-			];
-			// console.log(payload);
-			return payload;//response;
-		});
+	await Promise.all(await bookingsData.map(async booking => {
+		try {
+			// const { referenceNumber } = booking;
+			// console.log(`Getting booking data for ${referenceNumber}...`);	
+			const bookingPage = await browser.newPage();
+			await bookingPage.goto(booking.url, { timeout: 120000 });
 	
-		//	Costings
-		const costingsSelector = `[href*='costingbreakdown']`;
-		await bookingPage.waitForSelector(costingsSelector);
-		await bookingPage.click(costingsSelector);
-		await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`);
-		const costingsData = await bookingPage.evaluate(() => {
-			const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
-			return {
-				nett: costingsElement[5].textContent.trim(),
-				gross: costingsElement[6].textContent.trim(),
-				apportioned: costingsElement[7].textContent.trim(),
-				unapportioned: costingsElement[8].textContent.trim(),
-				extra_margin: costingsElement[9].textContent.trim(),
-				commission: costingsElement[10].textContent.trim(),
-				gst: costingsElement[11].textContent.trim(),
-			};
-		});
-		bookingData[0].additional_data['total_costings'] = costingsData;
-		// console.log({ costingsData });
-
-		//	Receipts
-		const receiptsSelector = `[href*='receipts']`;
-		await bookingPage.waitForSelector(receiptsSelector);
-		await bookingPage.click(receiptsSelector);
-		await bookingPage.waitForSelector(`[href*='cardpayment.pl']`);
-		const receiptsData = await bookingPage.evaluate(() => {
-			const receipts = [];
-			const receiptTables = document.querySelectorAll(`.listtable`);
-			if (receiptTables.length === 0) return receipts;
-
+			const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
+			await bookingPage.waitForSelector(bookingDetailsSelector)
+			.catch(async () => {
+				errors.push(`${booking.referenceNumber ?? booking.url} - Booking details data exception. Not updating.`);
+				await bookingPage.close();
+			});
+	
+			const bookingData = await bookingPage.evaluate(async () => {
+				const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
+	
+				const conversion_reference = detailsTable[1].textContent.trim();
+				let bookingPayload = [], detail = null;
+				
+				bookingPayload.push({ label: 'traveltek_url', value: document.location.href });
+	
+				if (detailsTable.length > 0) {	
+					for (let i=0; i < detailsTable.length; i++) {
+						const isEven = i % 2 == 0;
+						const child = detailsTable[i];
+						if (isEven) {
+							detail = {
+								...detail,
+								label: child.textContent.trim().toLowerCase().replace(/\s+/g, '_')
+							};
+							continue;
+						};
+				
+						if (!detail.label.trim()) {
+							detail = null;
+							continue;
+						};
+						
+						bookingPayload.push({
+							...detail,
+							value: child.textContent.trim()
+						});
+						detail = null;
+					}
+				}
+	
+				const elements = document.querySelector('#elementlist');
+				const portfoliosElements = elements.querySelectorAll('.portfolioelement');
+				const elementsData = [];
+				portfoliosElements.forEach((portfoliosElement) => {
+					const portfolio = portfoliosElement.querySelectorAll('.listtable tr td');
+					const hiddenDetails = portfoliosElement.querySelectorAll('& > div table tr td');
+	
+					const element = [
+						{ label: 'provider', value: portfolio[6].textContent.trim() },
+						{ label: 'provider_reference', value: portfolio[7].textContent.trim() },
+						{ label: 'type', value: portfolio[3].textContent.trim() },
+						{ label: 'net', value: portfolio[9].textContent.trim() },
+						{ label: 'gross', value: portfolio[10].textContent.trim(), },
+						{ label: hiddenDetails[0].textContent.trim().toLowerCase().replace(/\s+/g, '_'), value: hiddenDetails[1].textContent.trim(), },
+						{ label: hiddenDetails[2].textContent.trim().toLowerCase().replace(/\s+/g, '_'), value: hiddenDetails[3].textContent.trim(), },
+					];
+					elementsData.push(element.reduce((acc, { label, value }) => {
+						acc[label] = value;
+						return acc;
+					}, {}));
+				});
+	
+				bookingPayload = {
+					...bookingPayload.reduce((acc, { label, value }) => {
+						acc[label] = value;
+						return acc;
+					}, {}),
+					...{ elements: elementsData }
+				};
+	
+				//	All travellers
+				const bookingPassengerListSelector = `#financial-details + h3 + .listtable .listrow`;
+				const bookingPassengerList = document.querySelectorAll(bookingPassengerListSelector);
+				const passengers = [];
+				bookingPassengerList.forEach((passenger) => {
+					const passengerName = passenger.querySelector(`td:nth-child(2)`).textContent.trim();
+					const passengerFare = passenger.querySelector(`td:nth-child(4)`).textContent.trim();
+					const passengerPhone = passenger.querySelector(`td:nth-child(6)`).textContent.trim();
+					const passengerEmail = passenger.querySelector(`td:nth-child(8)`).textContent.trim();
+	
+					passengers.push({
+						name: passengerName,
+						fare: passengerFare,
+						phone: passengerPhone,
+						email: passengerEmail,
+					});
+				});
+				bookingPayload['passengers'] = passengers;
+	
+				const payload = [
+					{
+						conversion_reference,
+						additional_data: bookingPayload
+					}
+				];
+				return payload;
+			});
+		
+			//	Costings
+			const costingsSelector = `[href*='costingbreakdown']`;
+			await bookingPage.waitForSelector(costingsSelector);
+			await bookingPage.click(costingsSelector);
+			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`)
+			.catch(async () => {
+				errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Not updating.`);
+				await bookingPage.close();
+			});
+			const costingsData = await bookingPage.evaluate(() => {
+				const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
+				return {
+					nett: costingsElement[5].textContent.trim(),
+					gross: costingsElement[6].textContent.trim(),
+					apportioned: costingsElement[7].textContent.trim(),
+					unapportioned: costingsElement[8].textContent.trim(),
+					extra_margin: costingsElement[9].textContent.trim(),
+					commission: costingsElement[10].textContent.trim(),
+					gst: costingsElement[11].textContent.trim(),
+				};
+			});
+			bookingData[0].additional_data['total_costings'] = costingsData;
+	
 			//	Receipts
-			const receiptsRows = receiptTables[0].querySelectorAll(`.listrow`);
-			receiptsRows.forEach((receipt, index) => {
-				receipts.push({
-					id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
-					reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
-					date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
-					payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
-					total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
-					card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
-					unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
-					type: 'receipt',
-				});
+			const receiptsSelector = `[href*='receipts']`;
+			await bookingPage.waitForSelector(receiptsSelector);
+			await bookingPage.click(receiptsSelector);
+			await bookingPage.waitForSelector(`[href*='cardpayment.pl']`)
+			.catch(async () => {
+				errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Not updating.`);
+				await bookingPage.close();
 			});
-			if (receiptTables.length === 1) return receipts;
-
-			//	Refunds
-			const refundRows = receiptTables[1].querySelectorAll(`.listrow`);
-			refundRows.forEach((receipt, index) => {
-				receipts.push({
-					id: receipt.querySelector(`td:nth-child(1)`).textContent.trim(),
-					reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
-					date: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
-					payment_method: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
-					total_value: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
-					card_fee: null,
-					unapportioned_amount: null,
-					type: 'refund',
+			const receiptsData = await bookingPage.evaluate(() => {
+				const receipts = [];
+				const receiptTables = document.querySelectorAll(`.listtable`);
+				if (receiptTables.length === 0) return receipts;
+	
+				//	Receipts
+				const receiptsRows = receiptTables[0].querySelectorAll(`.listrow`);
+				receiptsRows.forEach((receipt) => {
+					receipts.push({
+						id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+						reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+						date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+						payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
+						total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
+						card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+						unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
+						type: 'receipt',
+					});
 				});
+				if (receiptTables.length === 1) return receipts;
+	
+				//	Refunds
+				const refundRows = receiptTables[1].querySelectorAll(`.listrow`);
+				refundRows.forEach((receipt) => {
+					receipts.push({
+						id: receipt.querySelector(`td:nth-child(1)`).textContent.trim(),
+						reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+						date: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+						payment_method: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+						total_value: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+						card_fee: null,
+						unapportioned_amount: null,
+						type: 'refund',
+					});
+				});
+				return receipts;
 			});
-			return receipts;
-		});
-		bookingData[0].additional_data['receipts'] = receiptsData ?? [];
-
-		//	Primary Booking Passenger - this navigates to a new page so do all booking processing before this
-		const passengerSelector = `[href*='customer_view']`;
-		await bookingPage.waitForSelector(passengerSelector);
-		await bookingPage.click(passengerSelector);
-		await bookingPage.waitForSelector(`.boxstyle1`);
-		const passengerData = await bookingPage.evaluate(() => {
-			const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
-			const passengerName = passengerContactDetailsElement[1].textContent.trim();
-			const passengerEmail = passengerContactDetailsElement[41].textContent.trim();
-			const passengerPhone = passengerContactDetailsElement[31].textContent.trim();
-			const passengerDOB = passengerContactDetailsElement[9].textContent.trim();
-			const passengerPostcode = passengerContactDetailsElement[29].textContent.trim();
-
+			bookingData[0].additional_data['receipts'] = receiptsData ?? [];
+	
+			//	Primary Booking Passenger - this navigates to a new page so do all booking processing before this
+			const passengerSelector = `[href*='customer_view']`;
+			await bookingPage.waitForSelector(passengerSelector, { timeout: 10000 })
+			.then(async () => {
+				await bookingPage.click(passengerSelector);
+				bookingData[0].additional_data['primary_passenger'] = await bookingPage.waitForSelector(`.boxstyle1`, { timeout: 5000 })
+				.then(async () => {
+					return await bookingPage.evaluate(() => {
+						const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
+						const passengerName = passengerContactDetailsElement[1].textContent.trim();
+						const passengerEmail = passengerContactDetailsElement[41].textContent.trim();
+						const passengerPhone = passengerContactDetailsElement[31].textContent.trim();
+						const passengerDOB = passengerContactDetailsElement[9].textContent.trim();
+						const passengerPostcode = passengerContactDetailsElement[29].textContent.trim();
+			
+						return {
+							name: passengerName,
+							email: passengerEmail,
+							phone: passengerPhone,
+							dob: passengerDOB,
+							postcode: passengerPostcode,
+						};
+					});
+				})
+				.catch(async () => {
+					errors.push(`${booking.referenceNumber ?? booking.url} - Customer data exception. Updating with default data.`);
+					return {
+						name: '',
+						email: '',
+						phone: '',
+						dob: '',
+						postcode: '',
+					};
+					// await bookingPage.close();
+				});
+			})
+			.catch(async () => {
+				errors.push(`${booking.referenceNumber ?? booking.url} - Customer data exception. Updating with default data.`);
+				bookingData[0].additional_data['primary_passenger'] = {
+					name: '',
+					email: '',
+					phone: '',
+					dob: '',
+					postcode: '',
+				};
+				// await bookingPage.close();
+			});
+	
+			await fetch(apiUrlBase, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${bearerToken}`
+				},
+				body: JSON.stringify(bookingData)
+			})
+			.then((response) => response.json())
+	
+			await bookingPage.close();
 			return {
-				name: passengerName,
-				email: passengerEmail,
-				phone: passengerPhone,
-				dob: passengerDOB,
-				postcode: passengerPostcode,
+				...bookingData,
+				additional_data: {
+					...bookingData['additional_data'],
+				}
 			};
-		});
-		bookingData[0].additional_data['primary_passenger'] = passengerData;
-		// console.log({ passengerData });
-
-		const response = await fetch(apiUrlBase, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${bearerToken}`
-			},
-			body: JSON.stringify(bookingData)
-		})
-		.then((response) => response.json())
-		.catch((err) => console.error('Error occurred saving to database.', {err}));
-
-		// console.log({
-		// 	// 'API Response': response,
-		// 	bookingData,
-		// });
-
-		bookingPage && await bookingPage.close();
-		return {
-			...bookingData,
-			additional_data: {
-				...bookingData['additional_data'],
-				primary_passenger: passengerData,
-			}
-		};
+		} catch (err) {
+			await browser.currentPage && browser.currentPage.close();
+		}
 	}));
 
+	if (errors.length > 0) {
+		processBookingsSpinner && processBookingsSpinner.error({ text: `${loggingMessage}Error` });
+		console.log(`${chalk.red(`${errors.join('\n')}`)}`);
+		return;
+	}
 	processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
 };
 
@@ -276,7 +310,7 @@ export const getBookings = async (browser, page) => {
 				page.waitForNavigation({ waitUntil: 'networkidle0' }),
 				page.click(nextPageSelector)
 			]);
-			console.log('Navigating to next page...');
+			// console.log('Navigating to next page...');
 		}
 	}
 };
@@ -298,7 +332,7 @@ export const doLogin = async (credentials: Credentials, page) => {
 	await page.click(loginButtonSelector);
 };
 
-export const doTodaysBookings = async (credentials, browser?, startDate?, endDate?) => {
+export const processLiveBookings = async (credentials, browser?, startDate?, endDate?) => {
 	const reportStartDate = startDate ? new Date(startDate) : new Date();
 	const reportEndDate = endDate ? new Date(endDate) : new Date();
 
@@ -329,9 +363,9 @@ export const doTodaysBookings = async (credentials, browser?, startDate?, endDat
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
 		await page.waitForSelector(listBookingsSelector, { timeout: 5000 })
 			.then(async () => await getBookings(browser, page))
-			.catch((error) => console.error(`No bookings exist for ${formatDate(reportStartDate)}`));	
+			.catch((error) => console.error(`Timeout occurred showing search results. It usually means no bookings were returned. Err: ${error.message}`));
 	} catch (error) {
-		console.error('Error: ', error);
+		console.log(`${chalk.red(`General exception processing live bookings: ${error.message}`)}`);
 	} finally {
 		browser && await browser.close();
 	}
@@ -411,7 +445,10 @@ const dailyProcessingHasEnded = (processingEndTime) => (new Date() >= new Date(`
  * @param credentials Traveltek credentials
  * @param historicalProcessHasExecuted Allows the historical process to be bypassed
  */
-export const runDailyBookingProcessing = async (credentials,
+export const runDailyBookingProcessing = async (
+	credentials,
+	startDate,
+	endDate,
 	historicalProcessHasExecuted = false
 ) => {
 	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0,
@@ -426,14 +463,15 @@ export const runDailyBookingProcessing = async (credentials,
 		if (canStartDailyProcess && !hasDailyProcessEnded) {
 			const browser = await launchBrowser();
 			try {
-				await doTodaysBookings(credentials, browser);
-
+				await processLiveBookings(credentials, browser, startDate, endDate);
+				await browser && browser.close();
 				//	Wait for a few seconds before running again because Traveltek API is slow
 				await timeout(15000);
 
-				//	update bookings made in the last 5 days
-				await runHistoricalBookingProcessing(
-					credentials, 
+				//	live update bookings made in the last 5 days
+				await processLiveBookings(
+					credentials,
+					null,
 					formatDate(dateAdd(new Date(), daysAgoToProcessDaily, 'days')), 
 					formatDate(dateAdd(new Date(), -1, 'days'))
 				);
@@ -442,10 +480,10 @@ export const runDailyBookingProcessing = async (credentials,
 					historicalProcessHasExecuted = false;
 					console.log(`\nDaily processing end time has passed. Checking if historical processor should run next...`);
 				} else {
-					console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s). Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
+					console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 				}
-			} catch (e) {
-				console.error('Exception occurred in daily bookings processing.', { e });
+			} catch (err) {
+				console.log(`${chalk.red(`General exception occurred processing daily bookings: ${err.message}`)}`);
 			} finally {
 				browser && await browser.close();
 				await timeout(defaultSleepTimeInMs);
@@ -462,7 +500,7 @@ export const runDailyBookingProcessing = async (credentials,
 					//	Turn if off after running once
 					historicalProcessHasExecuted = true;
 				} catch (err) {
-					console.error('Error occurred processing historical bookings.', { err });
+					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
 				}
 			} else {
 				if (!allProcessesAreHibernating) {

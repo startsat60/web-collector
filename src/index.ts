@@ -1,6 +1,6 @@
+import chalk from "chalk";
 import { mainmenu, welcome, ProcessType } from "./helpers/menu.js";
-import { doLogin, processBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek.js";
-import { createSpinner } from 'nanospinner';
+import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek.js";
 
 (async () => {
 	console.clear();
@@ -9,28 +9,44 @@ import { createSpinner } from 'nanospinner';
 
 	switch (processToRun.process) {
 		case ProcessType.DAILY:
-			createSpinner('Running Daily Booking Processing...').start().stop();
+			console.log(`\n${chalk.green('Running Live Booking Processing...')}`);
 			await runDailyBookingProcessing(
 				{
 					username: processToRun.credentials.username, 
 					password: processToRun.credentials.password
 				},
+				processToRun.dateRange.startDate, 
+				processToRun.dateRange.endDate,
 				true
 			);
 			break;
 		case ProcessType.HISTORICAL:
-			createSpinner('Running Historical Booking Processing...').start().stop();
+			console.log(`\n${chalk.green('Running Historical Booking Processing...')}`);
 			await runHistoricalBookingProcessing(
 				{
 					username: processToRun.credentials.username, 
 					password: processToRun.credentials.password
 				},
 				processToRun.dateRange.startDate, 
-				processToRun.dateRange.endDate);
+				processToRun.dateRange.endDate
+			);
 			break;
 		case ProcessType.SPECIFIC_BOOKING:
-			const { credentials, bookingUrl } = processToRun;
-			await runSpecificBookingProcessing(credentials, bookingUrl);
+			console.log(`\n${chalk.green('Running Specified Booking Processing...')}`);
+			await runSpecificBookingProcessing(
+				processToRun.credentials, 
+				processToRun.bookingUrl
+			);
+			break;
+		case ProcessType.LIVE_DATE_RANGE:
+			console.log(`\n${chalk.green('Running Live Booking Processing for date range...')}`);
+			await processLiveBookings(
+				processToRun.credentials, 
+				null, 
+				processToRun.dateRange.startDate, 
+				processToRun.dateRange.endDate
+			);
+			console.log(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`);
 			break;
 		default:
 			break;
