@@ -465,8 +465,13 @@ export const runDailyBookingProcessing = async (
 			try {
 				await processLiveBookings(credentials, browser, startDate, endDate);
 				await browser && browser.close();
+
+				console.log(`\nDaily processing completed for ${startDate} to ${endDate}.`);
+				const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${daysAgoToProcessDaily} days...`;
+				const waitToProcessHistory = createSpinner(waitToProcessHistoryMessage).start();
 				//	Wait for a few seconds before running again because Traveltek API is slow
 				await timeout(15000);
+				waitToProcessHistory.success({ text: `${waitToProcessHistoryMessage}Done` });
 
 				//	live update bookings made in the last n days
 				await processLiveBookings(
