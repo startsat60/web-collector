@@ -21,7 +21,7 @@ export interface Credentials {
 export const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
 	let processBookingsSpinner = null,
 		bookingReferenceNumber = bookingsData[0].referenceNumber ?? bookingsData[0].url,
-		loggingMessage = `Getting data for ${bookingsData.length} bookings starting from the most recently added - ${bookingReferenceNumber}...`,
+		loggingMessage = `Processing ${bookingsData.length} bookings starting with ${bookingReferenceNumber}...`,
 		errors = [];
 
 	if (showLogging) {
@@ -468,7 +468,7 @@ export const runDailyBookingProcessing = async (
 				//	Wait for a few seconds before running again because Traveltek API is slow
 				await timeout(15000);
 
-				//	live update bookings made in the last 5 days
+				//	live update bookings made in the last n days
 				await processLiveBookings(
 					credentials,
 					null,
@@ -528,12 +528,12 @@ export const runHistoricalBookingProcessing = async (credentials, startDate?, en
 	await timeout(10000);
 };
 
-export const runSpecificBookingProcessing = async (credentials, bookingUrl) => {
+export const runSpecificBookingProcessing = async (credentials, bookingUrls: string) => {
 	const browser = await launchBrowser();
 	const page = await browser.newPage();
 	await doLogin(credentials, page);
 
-	const bookingsData = [{ url: bookingUrl }];
+	const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
 	await processBookings(browser, bookingsData, true, page);
 	browser && await browser.close();
 }

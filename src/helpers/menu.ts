@@ -27,7 +27,7 @@ export enum ProcessType {
 export const availableProcesses = [
   { value: ProcessType.DAILY, name: 'Live Traveltek Booking Processing (Runs in a loop)' },
   { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range (Sync)' },
-  { value: ProcessType.SPECIFIC_BOOKING, name: 'Live Traveltek Processing by specific booking URL' },
+  { value: ProcessType.SPECIFIC_BOOKING, name: 'Live Traveltek Processing by specific booking URL(s)' },
   { value: ProcessType.LIVE_DATE_RANGE, name: 'Live Traveltek Processing by date range' },
 
 ];
@@ -67,12 +67,16 @@ export const promptForDates = async (startDate, endDate?): Promise<{ startDate: 
   };
 };
 
-export const promptForCredentials = async (): Promise<{ username: string; password: string }> => {
+export const promptForCredentials = async (
+  username?: string,
+  password?: string,
+): Promise<{ username: string; password: string }> => {
   console.log(chalk.yellow('This process requires Traveltek credentials to continue.'));
   const credentialAnswers = await inquirer.prompt([
     {
       name: 'username',
       type: 'input',
+      default: username ?? process.env.TRAVELTEK_USERNAME,
       message: 'Enter your Traveltek username:',
       validate: (input) => {
         return input.length > 0 || 'Username cannot be empty';
@@ -83,6 +87,7 @@ export const promptForCredentials = async (): Promise<{ username: string; passwo
       type: 'password',
       message: 'Enter your Traveltek password:',
       mask: '*',
+//      default: password ?? process.env.TRAVELTEK_PASSWORD,
       validate: (input) => {
         return input.length > 0 || 'Password cannot be empty';
       },
@@ -99,7 +104,7 @@ export async function mainmenu() {
 	const currentDate = formatDate();
   let credentials = null,
     dateRange = { startDate: currentDate, endDate: currentDate },
-    bookingUrl = null;
+    bookingUrlsDelimited = null;
 
   const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
 
@@ -130,13 +135,13 @@ export async function mainmenu() {
 
   if (answers.processToRun === ProcessType.SPECIFIC_BOOKING) {
     credentials = await promptForCredentials();
-    bookingUrl = await inquirer.prompt([
+    bookingUrlsDelimited = await inquirer.prompt([
       {
         name: 'bookingUrl',
         type: 'input',
-        message: 'Enter the booking URL:',
+        message: 'Enter the booking URLs separated by a comma (or single URL):',
         validate: (input) => {
-          return input.length > 0 || 'URL cannot be empty';
+          return input.length > 0 || 'URLs cannot be empty';
         },
       },
     ]);
@@ -146,6 +151,6 @@ export async function mainmenu() {
     process: answers.processToRun,
     credentials,
     dateRange,
-    ...bookingUrl,
+    ...bookingUrlsDelimited,
   };
 };

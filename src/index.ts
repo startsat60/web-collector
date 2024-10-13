@@ -46,7 +46,7 @@ import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingPro
 				processToRun.dateRange.startDate, 
 				processToRun.dateRange.endDate
 			);
-			console.log(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`);
+			console.log(`\n${chalk.green(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
 			break;
 		default:
 			break;
