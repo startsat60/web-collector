@@ -1,7 +1,7 @@
 import { createSpinner } from "nanospinner";
 import { launchBrowser, timeout } from "../helpers/browser.js";
 import 'dotenv/config';
-import { dateAdd, formatDate, formatTime } from "../helpers/lib.js";
+import { dateAdd, formatDate, formatTime, sleep } from "../helpers/lib.js";
 import chalk from "chalk";
 
 const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
@@ -371,12 +371,16 @@ export const processLiveBookings = async (credentials, browser?, startDate?, end
 	}
 };
 
-export const doHistoricalBookings = async (credentials, historicalDataStartDate, historicalDataEndDate, browser?) => {
-	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&
-	// 	departure_date_from=${new Date().toISOString().split('T')[0]}&
-	// 	booking_status=Changed&booking_status=Query&booking_status=Open&sort_by_order=created_date asc`;
+export const doHistoricalBookings = async (credentials, historicalDataStartDate, historicalDataEndDate) => {
+	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
 
-	//	Do everything - debugging
+	//	All bookings
+	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${formatDate(new Date())}&sort_by_order=created_date asc`;
+
+	//	Untravelled bookings
+	// const fetchUrl = `${apiUrlBase}/search?departure_date_from=${formatDate(new Date())}&sort_by_order=created_date asc`;
+
+	//	debugging
 	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc`;
 
 	const existingBookings = await fetch(fetchUrl, {
@@ -395,46 +399,59 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	}));	
 
 	if (existingBookings.length === 0) {
-		console.log(`\nNo historical tasks to do. Exiting...`);
+		console.log(`\nNo historical tasks between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} to do. Exiting...`);
 		process.exit();
 	}
 
-	browser = browser ?? await launchBrowser();
-	const page = await browser.newPage();
-	await doLogin(credentials, page);
-
 	const startTime = new Date();
-	console.log(`\nChecking and updating historical data from ${historicalDataStartDate} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
-	console.log(`\nSyncing ${existingBookings.length} historical bookings...`);
+	console.log(`\nChecking and updating historical data from ${chalk.yellow(historicalDataStartDate)} to ${chalk.yellow(historicalDataEndDate)} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
+	console.log(`Syncing ${existingBookings.length} historical bookings...`);
 	let processBookingsSpinner = null;
+	const chunkSize = 200;
+	const bookingsPerChunk = 20;
+	const chunks = [];
 
-	try {
-		for (let i = 0; i < existingBookings.length; i+=10) {
-			const arrayOfPromises = [];
-			if (i < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i]], false));
-			if (i+1 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+1]], false));
-			if (i+2 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+2]], false));
-			if (i+3 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+3]], false));
-			if (i+4 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+4]], false));
-			if (i+5 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+5]], false));
-			if (i+6 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+6]], false));
-			if (i+7 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+7]], false));
-			if (i+8 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+8]], false));
-			if (i+9 < existingBookings.length) arrayOfPromises.push(processBookings(browser, [existingBookings[i+9]], false));
-
-			const loggingMessage = `Syncing records ${i+1} - ${i+arrayOfPromises.length} of ${existingBookings.length} historical bookings starting at ${existingBookings[i]?.referenceNumber}...`;
-			processBookingsSpinner = createSpinner(loggingMessage).start();
-
-			await Promise.all(arrayOfPromises);
-			processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
-		};
-	} catch (error) {
-		processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
-	} finally {
-		const endTime = new Date();
-		console.log(`\nFinished checking and updating historical data. This took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
-		browser && await browser.close();
+	for (let i = 0; i < existingBookings.length; i += chunkSize) {
+		chunks.push(existingBookings.slice(i, i + chunkSize));
 	}
+
+	if (chunks.length > 1) {
+		console.log(`That's quite a few bookings so they will be processed in ${chunks.length} chunks.`);
+	}
+	
+	for await (const chunk of chunks) {
+		//	launch a new browser and login for each chunk
+		const browser = await launchBrowser();
+		const page = await browser.newPage();
+		await doLogin(credentials, page);
+
+		try {		
+			for (let i = 0; i < chunk.length; i += bookingsPerChunk) {
+	
+				const arrayOfPromises = [];
+				for (let j = 0; j < bookingsPerChunk && i + j < chunk.length; j++) {
+					arrayOfPromises.push(processBookings(browser, [chunk[i + j]], false));
+				}
+
+				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;
+				processBookingsSpinner = createSpinner(loggingMessage).start();
+
+				await Promise.all(arrayOfPromises);
+				processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
+			}
+		} catch (error) {
+			processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
+		} finally {
+			//	close browser between each chunk processing pass
+			await browser.close();
+			const sleepTimeoutMs = 5000;
+			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
+			sleep(sleepTimeoutMs);
+		}
+	};
+
+	const endTime = new Date();
+	console.log(`\nFinished checking and updating historical data. This processed bookings between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} and took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
 };
 
 const dailyProcessingCanStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
@@ -467,7 +484,7 @@ export const runDailyBookingProcessing = async (
 				await browser && browser.close();
 
 				console.log(`\nDaily processing completed for ${startDate} to ${endDate}.`);
-				const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${daysAgoToProcessDaily} days...`;
+				const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${-1*daysAgoToProcessDaily} days...`;
 				const waitToProcessHistory = createSpinner(waitToProcessHistoryMessage).start();
 				//	Wait for a few seconds before running again because Traveltek API is slow
 				await timeout(15000);
@@ -526,9 +543,7 @@ export const runHistoricalBookingProcessing = async (credentials, startDate?, en
 		);	// Defaults back to day 1 or Traveltek data
 	const historyEndDate = endDate ?? formatDate();
 
-	const browser = await launchBrowser();
-	await doHistoricalBookings(credentials, historyStartDate, historyEndDate, browser);
-	browser && await browser.close();
+	await doHistoricalBookings(credentials, historyStartDate, historyEndDate);
 	//	Let's allow some time to pass before trying again
 	await timeout(10000);
 };
