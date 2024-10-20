@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer";
 
-export const launchBrowser = async (runHeadless = true) => {
+export const launchBrowser = async (runHeadless = Boolean(process.env.PUPPETEER_HEADLESS)) => {
 	const browser = await puppeteer.launch({
 		headless: runHeadless,
 		args: ['--no-sandbox', '--disable-setuid-sandbox'],
