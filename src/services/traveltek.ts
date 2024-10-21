@@ -18,7 +18,7 @@ export interface Credentials {
 	password: string;
 };
 
-export const processBookings = async (browser, bookingsData, showLogging = true, currentPage?) => {
+export const processBookings = async (browser, bookingsData, showLogging = true) => {
 	let processBookingsSpinner = null,
 		bookingReferenceNumber = bookingsData[0].referenceNumber ?? bookingsData[0].url,
 		loggingMessage = `Processing ${bookingsData.length} bookings starting with ${bookingReferenceNumber}...`,
@@ -554,6 +554,6 @@ export const runSpecificBookingProcessing = async (credentials, bookingUrls: str
 	await doLogin(credentials, page);
 
 	const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
-	await processBookings(browser, bookingsData, true, page);
+	await processBookings(browser, bookingsData, true);
 	browser && await browser.close();
 }
