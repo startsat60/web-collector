@@ -28,7 +28,8 @@ import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingPro
 					password: processToRun.credentials.password
 				},
 				processToRun.dateRange.startDate, 
-				processToRun.dateRange.endDate
+				processToRun.dateRange.endDate,
+				processToRun.statuses,
 			);
 			break;
 		case ProcessType.SPECIFIC_BOOKING:

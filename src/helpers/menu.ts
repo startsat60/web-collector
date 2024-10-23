@@ -1,4 +1,5 @@
 import inquirer from "inquirer";
+import { checkbox } from '@inquirer/prompts';
 import chalk from "chalk";
 import { formatDate, sleep } from "./lib.js";
 import { createSpinner } from "nanospinner";
@@ -100,11 +101,25 @@ export const promptForCredentials = async (
   };
 };
 
+export const promptForBookingStatus = async () => {
+  return await checkbox({
+    message: `Select one or more booking statuses to process:`,
+    choices: [
+      { name: 'Cancelled', value: 'Cancelled' },
+      { name: 'Changed', value: 'Changed', checked: true },
+      { name: 'Complete', value: 'Complete' },
+      { name: 'Open', value: 'Open', checked: true },
+      { name: 'Query', value: 'Query', checked: true },
+    ]    
+  })
+};
+
 export async function mainmenu() {
 	const currentDate = formatDate();
   let credentials = null,
     dateRange = { startDate: currentDate, endDate: currentDate },
-    bookingUrlsDelimited = null;
+    bookingUrlsDelimited = null,
+    statuses = [];
 
   const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
 
@@ -133,6 +148,10 @@ export async function mainmenu() {
     };
   };
 
+  if (answers.processToRun === ProcessType.HISTORICAL) {
+    statuses = await promptForBookingStatus();
+  };
+
   if (answers.processToRun === ProcessType.SPECIFIC_BOOKING) {
     credentials = await promptForCredentials();
     bookingUrlsDelimited = await inquirer.prompt([
@@ -152,5 +171,6 @@ export async function mainmenu() {
     credentials,
     dateRange,
     ...bookingUrlsDelimited,
+    statuses,
   };
 };

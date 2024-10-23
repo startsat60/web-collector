@@ -371,17 +371,16 @@ export const processLiveBookings = async (credentials, browser?, startDate?, end
 	}
 };
 
-export const doHistoricalBookings = async (credentials, historicalDataStartDate, historicalDataEndDate) => {
+export const doHistoricalBookings = async (
+	credentials, 
+	historicalDataStartDate, 
+	historicalDataEndDate, 
+	statuses = []
+) => {
 	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
 
-	//	All bookings
-	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${formatDate(new Date())}&sort_by_order=created_date asc`;
-
-	//	Untravelled bookings
-	// const fetchUrl = `${apiUrlBase}/search?departure_date_from=${formatDate(new Date())}&sort_by_order=created_date asc`;
-
 	//	debugging
-	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc`;
+	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc&${statuses.map(status => `booking_status=${status}`).join('&')}`;
 
 	const existingBookings = await fetch(fetchUrl, {
 		method: 'GET',
@@ -408,7 +407,7 @@ export const doHistoricalBookings = async (credentials, historicalDataStartDate,
 	console.log(`Syncing ${existingBookings.length} historical bookings...`);
 	let processBookingsSpinner = null;
 	const chunkSize = 200;
-	const bookingsPerChunk = 20;
+	const bookingsPerChunk = 40;
 	const chunks = [];
 
 	for (let i = 0; i < existingBookings.length; i += chunkSize) {
@@ -535,7 +534,7 @@ export const runDailyBookingProcessing = async (
 	}
 };
 
-export const runHistoricalBookingProcessing = async (credentials, startDate?, endDate?) => {
+export const runHistoricalBookingProcessing = async (credentials, startDate?, endDate?, statuses?) => {
 	const historyStartDate = startDate ?? 
 		(process.env.HISTORICAL_PROCESSING_DAY_0 ? 
 			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
@@ -543,7 +542,7 @@ export const runHistoricalBookingProcessing = async (credentials, startDate?, en
 		);	// Defaults back to day 1 or Traveltek data
 	const historyEndDate = endDate ?? formatDate();
 
-	await doHistoricalBookings(credentials, historyStartDate, historyEndDate);
+	await doHistoricalBookings(credentials, historyStartDate, historyEndDate, statuses);
 	//	Let's allow some time to pass before trying again
 	await timeout(10000);
 };
