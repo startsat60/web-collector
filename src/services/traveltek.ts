@@ -1,7 +1,7 @@
 import { createSpinner } from "nanospinner";
 import { launchBrowser, timeout } from "../helpers/browser.js";
 import 'dotenv/config';
-import { dateAdd, formatDate, formatTime, sleep } from "../helpers/lib.js";
+import { dateAdd, formatDate, formatTime, ProcessingStatus, sleep } from "../helpers/lib.js";
 import chalk from "chalk";
 import { Browser } from "puppeteer";
 
@@ -474,6 +474,8 @@ export const doHistoricalBookings = async ({
 
 const dailyProcessingCanStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
 const dailyProcessingHasEnded = (processingEndTime) => (new Date() >= new Date(`${formatDate()} ${processingEndTime}`));
+const withinDailyProcessingWindow = () => (dailyProcessingCanStart(processingStartTime) && !dailyProcessingHasEnded(processingEndTime));
+
 /**
  * Run the Traveltek daily booking routine.
  * This routine runs during the periods defined in the environment variables
@@ -484,23 +486,26 @@ export const runDailyBookingProcessing = async ({
 	credentials,
 	startDate,
 	endDate,
-	historicalProcessHasExecuted = false
 }: {
 	credentials: Credentials, 
 	startDate?: string, 
 	endDate?: string, 
 	historicalProcessHasExecuted?: boolean
 }) => {
-	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0,
-		daysToRun = process.env.DAILY_PROCESSING_DAYS_TO_RUN ? 
-			process.env.DAILY_PROCESSING_DAYS_TO_RUN.split(',').map((d) => Number(d)) : [];
-	let allProcessesAreHibernating = false;
+	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
+	let processingStatus: ProcessingStatus | null = null,
+		hibernationSpinner = null;
 
-	while (1 == 1) {
-		const canStartDailyProcess = (dailyProcessingCanStart(processingStartTime)),// && daysToRun.includes(new Date().getDay())),
-			hasDailyProcessEnded = dailyProcessingHasEnded(processingEndTime);
+	while (
+		processingStatus === null || 
+		processingStatus === ProcessingStatus.IN_PROGRESS ||
+		processingStatus === ProcessingStatus.SLEEPING || 
+		processingStatus === ProcessingStatus.HIBERNATING
+	) {
+		//	check if the current time is within the processing hours on each iteration
 
-		if (canStartDailyProcess && !hasDailyProcessEnded) {
+		if (withinDailyProcessingWindow()) {
+			hibernationSpinner && hibernationSpinner.stop();
 			const browser = await launchBrowser();
 			try {
 				await processLiveBookings(credentials, browser, startDate, endDate);
@@ -521,37 +526,49 @@ export const runDailyBookingProcessing = async ({
 					formatDate(dateAdd(new Date(), -1, 'days'))
 				);
 
-				if (dailyProcessingHasEnded(processingEndTime)) {
-					historicalProcessHasExecuted = false;
-					console.log(`\nDaily processing end time has passed. Checking if historical processor should run next...`);
-				} else {
-					console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
-				}
+				console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 			} catch (err) {
 				console.log(`${chalk.red(`General exception occurred processing daily bookings: ${err.message}`)}`);
 			} finally {
 				browser && await browser.close();
+				processingStatus = ProcessingStatus.SLEEPING;
 				await timeout(defaultSleepTimeInMs);
 			}
 		} else {
-			//	Only run historical bookings tasks outside the processing hours of the daily routine
-			if (!historicalProcessHasExecuted && !allProcessesAreHibernating) {
-				//	Check for historical bookings that need processing
+			//	Daily processing out of hours, so run a short historical processing routine before hibernating
+			if (processingStatus === ProcessingStatus.SLEEPING) {
 				try {
-					//	Only execute if the daily processing is hibernating and also 
-					//		bypass this if the daily processing was skipped because it was executed outside 
-					//		the processing hours
-					await runHistoricalBookingProcessing({ credentials });
-					//	Turn if off after running once
-					historicalProcessHasExecuted = true;
+					console.log(chalk.green(`Daily processing end time has passed. Active historical bookings will be processed now...`));
+					await runHistoricalBookingProcessing({ 
+						credentials,
+						statuses: ['Changed', 'Query', 'Open'],
+					 });
+					//	Check if daily processing should begin again. If so, set status to sleeping so the loop can begin again. This will bypass the processing of cancelled and complete bookings
+					processingStatus = withinDailyProcessingWindow() ?
+						ProcessingStatus.SLEEPING : 
+						ProcessingStatus.HIBERNATING;
 				} catch (err) {
 					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+				} finally {
+					await timeout(defaultSleepTimeInMs);
+				}
+			} else if (processingStatus === ProcessingStatus.HIBERNATING) {
+				try {
+					console.log(`\n${chalk.green(`Daily and active historical processing is complete. Cancelled and Complete historical bookings will be processed now...`)}`);
+					await runHistoricalBookingProcessing({ 
+						credentials,
+						statuses: ['Complete', 'Cancelled'],
+					 });
+					//	Reset the processing status to null so the loop can begin again when processing start time is reached
+					processingStatus = null;
+				} catch (err) {
+					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+				} finally {
+					await timeout(defaultSleepTimeInMs);
 				}
 			} else {
-				if (!allProcessesAreHibernating) {
-					console.log(chalk.green(`\nHibernating bookings processing until ${processingStartTime}...`));
-					allProcessesAreHibernating = true;	
-				}
+				!hibernationSpinner && (hibernationSpinner = createSpinner(`Hibernating bookings processing until ${processingStartTime}...`).start());
+				processingStatus = null;
 				await timeout(defaultSleepTimeInMs);
 			}
 		}

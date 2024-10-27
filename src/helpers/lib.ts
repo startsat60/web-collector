@@ -1,3 +1,16 @@
+export enum ProcessType {
+  DAILY = 'DAILY',
+  HISTORICAL = 'HISTORICAL',
+  SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
+  LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
+};
+
+export enum ProcessingStatus {
+	IN_PROGRESS = 'IN_PROGRESS',
+	SLEEPING = 'SLEEPING',
+	HIBERNATING = 'HIBERNATING',
+};
+
 export const sleep = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
 
 export const formatDate = (date?: Date) => {

@@ -1,7 +1,7 @@
 import inquirer from "inquirer";
 import { checkbox } from '@inquirer/prompts';
 import chalk from "chalk";
-import { formatDate, sleep } from "./lib.js";
+import { formatDate, ProcessType, sleep } from "./lib.js";
 import { createSpinner } from "nanospinner";
 
 export async function welcome() {
@@ -17,13 +17,6 @@ export async function welcome() {
   ${chalk.green('You will be prompted to select a process to run.')}
   `);
 }
-
-export enum ProcessType {
-  DAILY = 'DAILY',
-  HISTORICAL = 'HISTORICAL',
-  SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
-  LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
-};
 
 export const availableProcesses = [
   { value: ProcessType.DAILY, name: 'Live Traveltek Booking Processing (Runs in a loop)' },

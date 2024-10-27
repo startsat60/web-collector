@@ -1,6 +1,7 @@
 import chalk from "chalk";
-import { mainmenu, welcome, ProcessType } from "./helpers/menu.js";
+import { mainmenu, welcome } from "./helpers/menu.js";
 import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek.js";
+import { ProcessType } from "./helpers/lib.js";
 
 (async () => {
 	console.clear();
