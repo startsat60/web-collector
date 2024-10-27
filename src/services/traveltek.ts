@@ -3,6 +3,7 @@ import { launchBrowser, timeout } from "../helpers/browser.js";
 import 'dotenv/config';
 import { dateAdd, formatDate, formatTime, sleep } from "../helpers/lib.js";
 import chalk from "chalk";
+import { Browser } from "puppeteer";
 
 const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
 const bearerToken = process.env.BEARER_TOKEN;
@@ -18,7 +19,20 @@ export interface Credentials {
 	password: string;
 };
 
-export const processBookings = async (browser, bookingsData, showLogging = true) => {
+export interface Booking {
+	referenceNumber?: string;
+	url: string;
+};
+
+export const processBookings = async ({
+	browser, 
+	bookingsData, 
+	showLogging = true
+}: {
+	browser: any, 
+	bookingsData: Booking[], 
+	showLogging?: boolean
+}) => {
 	let processBookingsSpinner = null,
 		bookingReferenceNumber = bookingsData[0].referenceNumber ?? bookingsData[0].url,
 		loggingMessage = `Processing ${bookingsData.length} bookings starting with ${bookingReferenceNumber}...`,
@@ -28,7 +42,7 @@ export const processBookings = async (browser, bookingsData, showLogging = true)
 		processBookingsSpinner = createSpinner(loggingMessage).start();
 	};
 
-	await Promise.all(await bookingsData.map(async booking => {
+	await Promise.all(await bookingsData.map(async (booking: Booking, i: number) => {
 		try {
 			// const { referenceNumber } = booking;
 			// console.log(`Getting booking data for ${referenceNumber}...`);	
@@ -301,7 +315,7 @@ export const getBookings = async (browser, page) => {
 			});
 		});
 
-		await processBookings(browser, currentPageBookingsData);
+		await processBookings({ browser, bookingsData: currentPageBookingsData });
 
 		hasNextPage = await page.$(nextPageSelector) !== null;
 		isFirstPage = false;
@@ -332,7 +346,7 @@ export const doLogin = async (credentials: Credentials, page) => {
 	await page.click(loginButtonSelector);
 };
 
-export const processLiveBookings = async (credentials, browser?, startDate?, endDate?) => {
+export const processLiveBookings = async (credentials: Credentials, browser?: Browser, startDate?: string, endDate?: string) => {
 	const reportStartDate = startDate ? new Date(startDate) : new Date();
 	const reportEndDate = endDate ? new Date(endDate) : new Date();
 
@@ -371,12 +385,17 @@ export const processLiveBookings = async (credentials, browser?, startDate?, end
 	}
 };
 
-export const doHistoricalBookings = async (
-	credentials, 
-	historicalDataStartDate, 
-	historicalDataEndDate, 
-	statuses = []
-) => {
+export const doHistoricalBookings = async ({
+	credentials,
+	historicalDataStartDate,
+	historicalDataEndDate,
+	statuses = [],
+}: {
+	credentials: Credentials, 
+	historicalDataStartDate: string, 
+	historicalDataEndDate: string, 
+	statuses: string[],
+}) => {
 	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
 
 	//	debugging
@@ -429,7 +448,7 @@ export const doHistoricalBookings = async (
 	
 				const arrayOfPromises = [];
 				for (let j = 0; j < bookingsPerChunk && i + j < chunk.length; j++) {
-					arrayOfPromises.push(processBookings(browser, [chunk[i + j]], false));
+					arrayOfPromises.push(processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
 				}
 
 				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;
@@ -461,12 +480,17 @@ const dailyProcessingHasEnded = (processingEndTime) => (new Date() >= new Date(`
  * @param credentials Traveltek credentials
  * @param historicalProcessHasExecuted Allows the historical process to be bypassed
  */
-export const runDailyBookingProcessing = async (
+export const runDailyBookingProcessing = async ({
 	credentials,
 	startDate,
 	endDate,
 	historicalProcessHasExecuted = false
-) => {
+}: {
+	credentials: Credentials, 
+	startDate?: string, 
+	endDate?: string, 
+	historicalProcessHasExecuted?: boolean
+}) => {
 	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0,
 		daysToRun = process.env.DAILY_PROCESSING_DAYS_TO_RUN ? 
 			process.env.DAILY_PROCESSING_DAYS_TO_RUN.split(',').map((d) => Number(d)) : [];
@@ -517,7 +541,7 @@ export const runDailyBookingProcessing = async (
 					//	Only execute if the daily processing is hibernating and also 
 					//		bypass this if the daily processing was skipped because it was executed outside 
 					//		the processing hours
-					await runHistoricalBookingProcessing(credentials);
+					await runHistoricalBookingProcessing({ credentials });
 					//	Turn if off after running once
 					historicalProcessHasExecuted = true;
 				} catch (err) {
@@ -534,25 +558,41 @@ export const runDailyBookingProcessing = async (
 	}
 };
 
-export const runHistoricalBookingProcessing = async (credentials, startDate?, endDate?, statuses?) => {
-	const historyStartDate = startDate ?? 
+export const runHistoricalBookingProcessing = async ({
+	credentials, 
+	startDate, 
+	endDate, 
+	statuses,
+}: {
+	credentials: Credentials, 
+	startDate?: string, 
+	endDate?: string, 
+	statuses?: string[]
+}) => {
+	const historicalDataStartDate = startDate ?? 
 		(process.env.HISTORICAL_PROCESSING_DAY_0 ? 
 			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
 			'2019-06-01'
 		);	// Defaults back to day 1 or Traveltek data
-	const historyEndDate = endDate ?? formatDate();
+	const historicalDataEndDate = endDate ?? formatDate();
 
-	await doHistoricalBookings(credentials, historyStartDate, historyEndDate, statuses);
+	await doHistoricalBookings({ credentials, historicalDataStartDate, historicalDataEndDate, statuses });
 	//	Let's allow some time to pass before trying again
 	await timeout(10000);
 };
 
-export const runSpecificBookingProcessing = async (credentials, bookingUrls: string) => {
+export const runSpecificBookingProcessing = async ({
+	credentials, 
+	bookingUrls
+}: {
+	credentials: Credentials, 
+	bookingUrls: string
+}) => {
 	const browser = await launchBrowser();
 	const page = await browser.newPage();
 	await doLogin(credentials, page);
 
 	const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
-	await processBookings(browser, bookingsData, true);
+	await processBookings({ browser, bookingsData, showLogging: true });
 	browser && await browser.close();
 }

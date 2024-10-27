@@ -10,34 +10,31 @@ import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingPro
 	switch (processToRun.process) {
 		case ProcessType.DAILY:
 			console.log(`\n${chalk.green('Running Live Booking Processing...')}`);
-			await runDailyBookingProcessing(
-				{
+			await runDailyBookingProcessing({
+				credentials: {
 					username: processToRun.credentials.username, 
 					password: processToRun.credentials.password
 				},
-				processToRun.dateRange.startDate, 
-				processToRun.dateRange.endDate,
-				true
-			);
+				startDate: processToRun.dateRange.startDate, 
+				endDate: processToRun.dateRange.endDate,
+				historicalProcessHasExecuted: true
+			});
 			break;
 		case ProcessType.HISTORICAL:
 			console.log(`\n${chalk.green('Running Historical Booking Processing...')}`);
-			await runHistoricalBookingProcessing(
-				{
-					username: processToRun.credentials.username, 
-					password: processToRun.credentials.password
-				},
-				processToRun.dateRange.startDate, 
-				processToRun.dateRange.endDate,
-				processToRun.statuses,
-			);
+			await runHistoricalBookingProcessing({
+				credentials: processToRun.credentials,
+				startDate: processToRun.dateRange.startDate, 
+				endDate: processToRun.dateRange.endDate,
+				statuses: processToRun.statuses,
+			});
 			break;
 		case ProcessType.SPECIFIC_BOOKING:
 			console.log(`\n${chalk.green('Running Specified Booking Processing...')}`);
-			await runSpecificBookingProcessing(
-				processToRun.credentials, 
-				processToRun.bookingUrl
-			);
+			await runSpecificBookingProcessing({
+				credentials: processToRun.credentials, 
+				bookingUrls: processToRun.bookingUrl,
+			});
 			break;
 		case ProcessType.LIVE_DATE_RANGE:
 			console.log(`\n${chalk.green('Running Live Booking Processing for date range...')}`);
