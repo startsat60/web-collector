@@ -567,7 +567,7 @@ export const runDailyBookingProcessing = async ({
 					await timeout(defaultSleepTimeInMs);
 				}
 			} else {
-				!hibernationSpinner && (hibernationSpinner = createSpinner(`Hibernating bookings processing until ${processingStartTime}...`).start());
+				!hibernationSpinner && (hibernationSpinner = createSpinner(`\n${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
 				processingStatus = null;
 				await timeout(defaultSleepTimeInMs);
 			}
