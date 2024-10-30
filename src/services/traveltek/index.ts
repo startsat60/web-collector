@@ -55,10 +55,13 @@ export const processBookings = async ({
 			const bookingData = await bookingPage.evaluate(async () => {
 				let bookingPayload = [], detail = null;
 
-				bookingPayload.push([
+				bookingPayload = [
 					{ label: 'destination_country', value: document.querySelector('[name="destcountryid"] option[selected]').textContent.trim() },
+					{ label: 'source', value: document.querySelector('[name="sourcecodeid"] option[selected]').textContent.trim() },
+					{ label: 'tickets_on_departure', value: document.querySelector('[name=ticketondemand]:checked').getAttribute('value') },
+					{ label: 'atol_booking', value: document.querySelector('[name=atol]:checked').getAttribute('value') },
 					{ label: 'traveltek_url', value: document.location.href },
-				]);
+				];
 
 				const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
 				const conversion_reference = detailsTable[1].textContent.trim();
