@@ -1,53 +1,25 @@
 import chalk from "chalk";
-import { mainmenu, welcome } from "./helpers/menu.js";
-import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek.js";
-import { ProcessType } from "./helpers/lib.js";
+import { selectTraveltekProcess, travelTekMenu } from "./services/traveltek/menu.js";
+import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./services/traveltek/index.js";
+import { welcome } from "./helpers/lib.js";
+import { servicesMenu } from "./helpers/menu.js";
+import { runGetCruisesProcess } from "./services/cruiseappy/index.js";
+import { cruiseAppyMenu, selectCruiseAppyProcess } from "./services/cruiseappy/menu.js";
 
 (async () => {
 	console.clear();
 	await welcome();
-	const processToRun = await mainmenu();
+	const serviceToRun = await servicesMenu();
 
-	switch (processToRun.process) {
-		case ProcessType.DAILY:
-			console.log(`\n${chalk.green('Running Live Booking Processing...')}`);
-			await runDailyBookingProcessing({
-				credentials: {
-					username: processToRun.credentials.username, 
-					password: processToRun.credentials.password
-				},
-				startDate: processToRun.dateRange.startDate, 
-				endDate: processToRun.dateRange.endDate,
-				historicalProcessHasExecuted: true
-			});
-			break;
-		case ProcessType.HISTORICAL:
-			console.log(`\n${chalk.green('Running Historical Booking Processing...')}`);
-			await runHistoricalBookingProcessing({
-				credentials: processToRun.credentials,
-				startDate: processToRun.dateRange.startDate, 
-				endDate: processToRun.dateRange.endDate,
-				statuses: processToRun.statuses,
-			});
-			break;
-		case ProcessType.SPECIFIC_BOOKING:
-			console.log(`\n${chalk.green('Running Specified Booking Processing...')}`);
-			await runSpecificBookingProcessing({
-				credentials: processToRun.credentials, 
-				bookingUrls: processToRun.bookingUrl,
-			});
-			break;
-		case ProcessType.LIVE_DATE_RANGE:
-			console.log(`\n${chalk.green('Running Live Booking Processing for date range...')}`);
-			await processLiveBookings(
-				processToRun.credentials, 
-				null, 
-				processToRun.dateRange.startDate, 
-				processToRun.dateRange.endDate
-			);
-			console.log(`\n${chalk.green(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
-			break;
-		default:
-			break;
+	if (serviceToRun === 'TRAVELTEK') {
+		console.log(`\n${chalk.green('Running Traveltek Process...')}`);
+		await selectTraveltekProcess(await travelTekMenu());
+	} else if (serviceToRun === 'CRUISEAPPY') {
+		console.log(`\n${chalk.green('Running CruiseAppy Process...')}`);
+		await selectCruiseAppyProcess(await cruiseAppyMenu());
+	} else {
+		console.log(`\n${chalk.red('No service selected. Exiting...')}`);
+		process
 	};
+	
 })();

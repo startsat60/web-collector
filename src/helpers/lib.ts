@@ -1,14 +1,22 @@
-export enum ProcessType {
-  DAILY = 'DAILY',
-  HISTORICAL = 'HISTORICAL',
-  SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
-  LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
-};
+import chalk from "chalk";
 
-export enum ProcessingStatus {
-	IN_PROGRESS = 'IN_PROGRESS',
-	SLEEPING = 'SLEEPING',
-	HIBERNATING = 'HIBERNATING',
+export async function welcome() {
+  console.log(`
+  ${chalk.cyan(`
+  ..####..######..####...#####..######..####.....####..######.....##....####..
+  .##.......##...##..##..##..##...##...##.......##..##...##......##....##..##.
+  ..####....##...######..#####....##....####....######...##.....#####..##..##.
+  .....##...##...##..##..##..##...##.......##...##..##...##.....##..##.##..##.
+  ..####....##...##..##..##...#...##....####....##..##...##......####...####..
+  `)}
+  ${chalk.green('Welcome to the System Process Engine.')} 
+  ${chalk.green('You will be prompted to select a process to run.')}
+  `);
+}
+
+export interface Credentials {
+	username: string;
+	password: string;
 };
 
 export const sleep = (ms = 2000) => new Promise((r) => setTimeout(r, ms));

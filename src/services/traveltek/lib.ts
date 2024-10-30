@@ -1,0 +1,13 @@
+
+export enum ProcessType {
+  DAILY = 'DAILY',
+  HISTORICAL = 'HISTORICAL',
+  SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
+  LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
+};
+
+export enum ProcessingStatus {
+	IN_PROGRESS = 'IN_PROGRESS',
+	SLEEPING = 'SLEEPING',
+	HIBERNATING = 'HIBERNATING',
+};

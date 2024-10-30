@@ -1,9 +1,10 @@
 import { createSpinner } from "nanospinner";
-import { launchBrowser, timeout } from "../helpers/browser.js";
+import { launchBrowser, timeout } from "../../helpers/browser.js";
 import 'dotenv/config';
-import { dateAdd, formatDate, formatTime, ProcessingStatus, sleep } from "../helpers/lib.js";
+import { Credentials, dateAdd, formatDate, formatTime, sleep } from "../../helpers/lib.js";
 import chalk from "chalk";
 import { Browser } from "puppeteer";
+import { ProcessingStatus } from "./lib.js";
 
 const loginUrl = process.env.TRAVELTEK_BOOKINGS_URL;
 const bearerToken = process.env.BEARER_TOKEN;
@@ -13,11 +14,6 @@ const processingEndTime = process.env.DAILY_PROCESSING_END_TIME || '21:30';
 const defaultSleepTimeInMs = process.env.DEFAULT_SLEEP_TIME_IN_MS ? 
 	Number(process.env.DEFAULT_SLEEP_TIME_IN_MS) : 
 	300000;
-
-export interface Credentials {
-	username: string;
-	password: string;
-};
 
 export interface Booking {
 	referenceNumber?: string;
@@ -57,13 +53,16 @@ export const processBookings = async ({
 			});
 	
 			const bookingData = await bookingPage.evaluate(async () => {
-				const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
-	
-				const conversion_reference = detailsTable[1].textContent.trim();
 				let bookingPayload = [], detail = null;
+
+				bookingPayload.push([
+					{ label: 'destination_country', value: document.querySelector('[name="destcountryid"] option[selected]').textContent.trim() },
+					{ label: 'traveltek_url', value: document.location.href },
+				]);
+
+				const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
+				const conversion_reference = detailsTable[1].textContent.trim();
 				
-				bookingPayload.push({ label: 'traveltek_url', value: document.location.href });
-	
 				if (detailsTable.length > 0) {	
 					for (let i=0; i < detailsTable.length; i++) {
 						const isEven = i % 2 == 0;

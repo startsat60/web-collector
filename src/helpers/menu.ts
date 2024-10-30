@@ -1,29 +1,14 @@
-import inquirer from "inquirer";
-import { checkbox } from '@inquirer/prompts';
 import chalk from "chalk";
-import { formatDate, ProcessType, sleep } from "./lib.js";
-import { createSpinner } from "nanospinner";
+import inquirer from "inquirer";
+import { formatDate } from "./lib.js";
 
-export async function welcome() {
-  console.log(`
-  ${chalk.cyan(`
-  ..####..######..####...#####..######..####.....####..######.....##....####..
-  .##.......##...##..##..##..##...##...##.......##..##...##......##....##..##.
-  ..####....##...######..#####....##....####....######...##.....#####..##..##.
-  .....##...##...##..##..##..##...##.......##...##..##...##.....##..##.##..##.
-  ..####....##...##..##..##...#...##....####....##..##...##......####...####..
-  `)}
-  ${chalk.green('Welcome to the System Process Engine.')} 
-  ${chalk.green('You will be prompted to select a process to run.')}
-  `);
+export enum ServiceType {
+  TRAVELTEK = 'TRAVELTEK',
+  CRUISEAPPY = 'CRUISEAPPY',
 }
-
-export const availableProcesses = [
-  { value: ProcessType.DAILY, name: 'Live Traveltek Booking Processing (Runs in a loop)' },
-  { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range (Sync)' },
-  { value: ProcessType.SPECIFIC_BOOKING, name: 'Live Traveltek Processing by specific booking URL(s)' },
-  { value: ProcessType.LIVE_DATE_RANGE, name: 'Live Traveltek Processing by date range' },
-
+export const availableServices = [
+  { value: ServiceType.TRAVELTEK, name: 'Select from available Traveltek services' },
+  { value: ServiceType.CRUISEAPPY, name: 'Select from available CruiseAppy services' },
 ];
 
 export const promptForDates = async (startDate, endDate?): Promise<{ startDate: string; endDate: string }> => {
@@ -71,7 +56,7 @@ export const promptForCredentials = async (
       name: 'username',
       type: 'input',
       default: username ?? process.env.TRAVELTEK_USERNAME,
-      message: 'Enter your Traveltek username:',
+      message: 'Enter your username:',
       validate: (input) => {
         return input.length > 0 || 'Username cannot be empty';
       },
@@ -79,7 +64,7 @@ export const promptForCredentials = async (
     {
       name: 'password',
       type: 'password',
-      message: 'Enter your Traveltek password:',
+      message: 'Enter your password:',
       mask: '*',
 //      default: password ?? process.env.TRAVELTEK_PASSWORD,
       validate: (input) => {
@@ -94,76 +79,12 @@ export const promptForCredentials = async (
   };
 };
 
-export const promptForBookingStatus = async () => {
-  return await checkbox({
-    message: `Select one or more booking statuses to process:`,
-    choices: [
-      { name: 'Cancelled', value: 'Cancelled' },
-      { name: 'Changed', value: 'Changed', checked: true },
-      { name: 'Complete', value: 'Complete' },
-      { name: 'Open', value: 'Open', checked: true },
-      { name: 'Query', value: 'Query', checked: true },
-    ]    
-  })
-};
-
-export async function mainmenu() {
-	const currentDate = formatDate();
-  let credentials = null,
-    dateRange = { startDate: currentDate, endDate: currentDate },
-    bookingUrlsDelimited = null,
-    statuses = [];
-
-  const day_0 = formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)); //new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0];
-
+export const servicesMenu = async () => {
   const answers = await inquirer.prompt({
     type: 'list',
-    name: 'processToRun',
-    message: 'Which process would you like to run?\n',
-    choices: availableProcesses,
+    name: 'service',
+    message: 'Which service would you like to run?\n',
+    choices: availableServices,
   });
-  const spinner = createSpinner('Preparing...').start();
-	await sleep(1000);
-  spinner.stop();
-
-  if (answers.processToRun === ProcessType.HISTORICAL || 
-    answers.processToRun === ProcessType.DAILY || 
-    answers.processToRun === ProcessType.LIVE_DATE_RANGE
-  ) {
-    credentials = await promptForCredentials();
-    if (answers.processToRun === ProcessType.DAILY || 
-      answers.processToRun === ProcessType.LIVE_DATE_RANGE
-    ) {
-      dateRange = await promptForDates(currentDate, currentDate);
-    };
-    if (answers.processToRun === ProcessType.HISTORICAL) {
-      dateRange = await promptForDates(day_0, currentDate);
-    };
-  };
-
-  if (answers.processToRun === ProcessType.HISTORICAL) {
-    statuses = await promptForBookingStatus();
-  };
-
-  if (answers.processToRun === ProcessType.SPECIFIC_BOOKING) {
-    credentials = await promptForCredentials();
-    bookingUrlsDelimited = await inquirer.prompt([
-      {
-        name: 'bookingUrl',
-        type: 'input',
-        message: 'Enter the booking URLs separated by a comma (or single URL):',
-        validate: (input) => {
-          return input.length > 0 || 'URLs cannot be empty';
-        },
-      },
-    ]);
-  }
-
-  return {
-    process: answers.processToRun,
-    credentials,
-    dateRange,
-    ...bookingUrlsDelimited,
-    statuses,
-  };
-};
+  return answers.service;
+}
