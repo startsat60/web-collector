@@ -55,13 +55,25 @@ export const processBookings = async ({
 			const bookingData = await bookingPage.evaluate(async () => {
 				let bookingPayload = [], detail = null;
 
-				bookingPayload = [
-					{ label: 'destination_country', value: document.querySelector('[name="destcountryid"] option[selected]').textContent.trim() },
-					{ label: 'source', value: document.querySelector('[name="sourcecodeid"] option[selected]').textContent.trim() },
-					{ label: 'tickets_on_departure', value: document.querySelector('[name=ticketondemand]:checked').getAttribute('value') },
-					{ label: 'atol_booking', value: document.querySelector('[name=atol]:checked').getAttribute('value') },
+				bookingPayload.push(
+					{ label: 'destination_country', value: document.querySelector('[name="destcountryid"] option[selected]') ? 
+						document.querySelector('[name="destcountryid"] option[selected]').textContent.trim() : '' },
+				);
+				bookingPayload.push(
+					{ label: 'source', value: document.querySelector('[name="sourcecodeid"] option[selected]') ? 
+						document.querySelector('[name="sourcecodeid"] option[selected]').textContent.trim() : '' },
+				);
+				bookingPayload.push(
+					{ label: 'tickets_on_departure', value: document.querySelector('[name=ticketondemand]:checked') ?
+						document.querySelector('[name=ticketondemand]:checked').getAttribute('value') : '' },
+				);
+				bookingPayload.push(
+					{ label: 'atol_booking', value: document.querySelector('[name=atol]:checked') ? 
+						document.querySelector('[name=atol]:checked').getAttribute('value') : '' },
+					);
+				bookingPayload.push(
 					{ label: 'traveltek_url', value: document.location.href },
-				];
+				);
 
 				const detailsTable = Array.from(document.querySelectorAll('table.detailstable > tbody > tr.detailsrow td'));
 				const conversion_reference = detailsTable[1].textContent.trim();
@@ -118,7 +130,7 @@ export const processBookings = async ({
 						acc[label] = value;
 						return acc;
 					}, {}),
-					...{ elements: elementsData }
+					...{ elements: elementsData },
 				};
 	
 				//	All travellers
@@ -154,9 +166,10 @@ export const processBookings = async ({
 			await bookingPage.waitForSelector(costingsSelector);
 			await bookingPage.click(costingsSelector);
 			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`)
-			.catch(async () => {
+			.catch(async (e) => {
 				errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Not updating.`);
 				await bookingPage.close();
+				throw e;
 			});
 			const costingsData = await bookingPage.evaluate(() => {
 				const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
@@ -177,9 +190,10 @@ export const processBookings = async ({
 			await bookingPage.waitForSelector(receiptsSelector);
 			await bookingPage.click(receiptsSelector);
 			await bookingPage.waitForSelector(`[href*='cardpayment.pl']`)
-			.catch(async () => {
+			.catch(async (e) => {
 				errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Not updating.`);
 				await bookingPage.close();
+				throw e;
 			});
 			const receiptsData = await bookingPage.evaluate(() => {
 				const receipts = [];
@@ -257,7 +271,7 @@ export const processBookings = async ({
 				});
 			})
 			.catch(async () => {
-				errors.push(`${booking.referenceNumber ?? booking.url} - Customer data exception. Updating with default data.`);
+				errors.push(`${booking.referenceNumber ?? booking.url} - Customer page load exception. Updating with default data.`);
 				bookingData[0].additional_data['primary_passenger'] = {
 					name: '',
 					email: '',
@@ -449,7 +463,7 @@ export const doHistoricalBookings = async ({
 			for (let i = 0; i < chunk.length; i += bookingsPerChunk) {
 	
 				const arrayOfPromises = [];
-				for (let j = 0; j < bookingsPerChunk && i + j < chunk.length; j++) {
+				for (let j = 0; j <= bookingsPerChunk && i + j < chunk.length; j++) {
 					arrayOfPromises.push(processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
 				}
 
@@ -571,6 +585,9 @@ export const runDailyBookingProcessing = async ({
 			} else {
 				!hibernationSpinner && (hibernationSpinner = createSpinner(`\n${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
 				processingStatus = null;
+				//	reset dates while out of hours in preparation for next day's processing
+				startDate = formatDate();
+				endDate = formatDate();
 				await timeout(defaultSleepTimeInMs);
 			}
 		}

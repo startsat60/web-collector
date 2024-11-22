@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "source $HOME/.nvm/nvm.sh; nvm use 18 && npm run build && node dist/index.js",
+    "start": "npm run build && node dist/index.js",
+    "traveltek": "npm run build && node dist/index.js service=traveltek",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
