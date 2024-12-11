@@ -44,7 +44,7 @@ export const travelTekMenu = async () => {
   });
   const spinner = createSpinner('Preparing...').start();
 	await sleep(1000);
-  spinner.stop();
+  spinner.success({ text: `Preparing...Done` });
 
   if (answers.processToRun === ProcessType.HISTORICAL || 
     answers.processToRun === ProcessType.DAILY || 

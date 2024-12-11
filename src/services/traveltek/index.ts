@@ -44,16 +44,23 @@ export const processBookings = async ({
 			// console.log(`Getting booking data for ${referenceNumber}...`);	
 			const bookingPage = await browser.newPage();
 			await bookingPage.goto(booking.url, { timeout: 120000 });
-	
+
 			const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
 			await bookingPage.waitForSelector(bookingDetailsSelector)
 			.catch(async () => {
-				errors.push(`${booking.referenceNumber ?? booking.url} - Booking details data exception. Not updating.`);
+				const screenshot = `bookings_data_exception_${new Date().toISOString().replace(/:/g, '-')}.png`;
+				await bookingPage.screenshot({
+					path: `./src/services/traveltek/screenshots/${screenshot}`,
+				});
+				errors.push(`${booking.referenceNumber ?? booking.url} - Booking details data exception. Screenshot captured: ${screenshot}. Not updating.`);
 				await bookingPage.close();
 			});
 	
 			const bookingData = await bookingPage.evaluate(async () => {
 				let bookingPayload = [], detail = null;
+				const booking_id = window.location.search.split('&').find((param) => param.includes('id')).split('=')[1];
+
+				bookingPayload.push({ label: 'booking_id', value: booking_id });
 
 				bookingPayload.push(
 					{ label: 'destination_country', value: document.querySelector('[name="destcountryid"] option[selected]') ? 
@@ -155,6 +162,7 @@ export const processBookings = async ({
 				const payload = [
 					{
 						conversion_reference,
+						last_processed_date: new Date().toISOString(),
 						additional_data: bookingPayload
 					}
 				];
@@ -167,7 +175,11 @@ export const processBookings = async ({
 			await bookingPage.click(costingsSelector);
 			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`)
 			.catch(async (e) => {
-				errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Not updating.`);
+				const screenshot = `costings_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
+				await bookingPage.screenshot({
+					path: `./src/services/traveltek/screenshots/${screenshot}`,
+				});
+				errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Screenshot captured: ${screenshot}. Not updating.`);
 				await bookingPage.close();
 				throw e;
 			});
@@ -191,7 +203,11 @@ export const processBookings = async ({
 			await bookingPage.click(receiptsSelector);
 			await bookingPage.waitForSelector(`[href*='cardpayment.pl']`)
 			.catch(async (e) => {
-				errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Not updating.`);
+				const screenshot = `receipts_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
+				await bookingPage.screenshot({
+					path: `./src/services/traveltek/screenshots/${screenshot}`,
+				});
+				errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Screenshot captured: ${screenshot}. Not updating.`);
 				await bookingPage.close();
 				throw e;
 			});
@@ -238,6 +254,7 @@ export const processBookings = async ({
 			const passengerSelector = `[href*='customer_view']`;
 			await bookingPage.waitForSelector(passengerSelector, { timeout: 10000 })
 			.then(async () => {
+				const defaultCustomer = bookingData[0].additional_data['passengers'].find((passenger) => passenger.name === bookingData[0].additional_data['customer_name']);
 				await bookingPage.click(passengerSelector);
 				bookingData[0].additional_data['primary_passenger'] = await bookingPage.waitForSelector(`.boxstyle1`, { timeout: 5000 })
 				.then(async () => {
@@ -259,19 +276,22 @@ export const processBookings = async ({
 					});
 				})
 				.catch(async () => {
-					errors.push(`${booking.referenceNumber ?? booking.url} - Customer data exception. Updating with default data.`);
 					return {
-						name: '',
-						email: '',
-						phone: '',
+						name: defaultCustomer ? defaultCustomer['name'] : '',
+						email: defaultCustomer ? defaultCustomer['email'] : '',
+						phone: defaultCustomer ? defaultCustomer['phone'] : '',
 						dob: '',
 						postcode: '',
 					};
 					// await bookingPage.close();
 				});
 			})
-			.catch(async () => {
-				errors.push(`${booking.referenceNumber ?? booking.url} - Customer page load exception. Updating with default data.`);
+			.catch(async (e) => {
+				const screenshot = `customer_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
+				await bookingPage.screenshot({
+					path: `./src/services/traveltek/screenshots/${screenshot}`,
+				});
+				errors.push(`${booking.referenceNumber ?? booking.url} - Customer page load exception. Screenshot captured: ${screenshot}. Updating with default data. Message: ${e.message}`);
 				bookingData[0].additional_data['primary_passenger'] = {
 					name: '',
 					email: '',
@@ -288,11 +308,13 @@ export const processBookings = async ({
 					'Content-Type': 'application/json',
 					'Authorization': `Bearer ${bearerToken}`
 				},
-				body: JSON.stringify(bookingData)
+				body: JSON.stringify(bookingData),
 			})
 			.then((response) => response.json())
+			// .catch((e) => console.error(`Error updating booking data: ${e.message}`));
 	
 			await bookingPage.close();
+			// console.log('API', { json: bookingData });
 			return {
 				...bookingData,
 				additional_data: {
@@ -346,20 +368,25 @@ export const getBookings = async (browser, page) => {
 };
 
 export const doLogin = async (credentials: Credentials, page) => {
-	page.goto(loginUrl, { timeout: 120000 });
+	try {
+		page.goto(loginUrl, { timeout: 120000 });
 
-	// Type into search box
-	const usernameSelector = `[name='username']`;
-	await page.waitForSelector(usernameSelector);
-	await page.type(`[name='username']`, credentials.username, { delay: 10 });
-
-	const passwordSelector = `[name='password']`;
-	await page.waitForSelector(passwordSelector);
-	await page.type(`[name='password']`, credentials.password, { delay: 10 });
+		// Type into search box
+		const usernameSelector = `[name='username']`;
+		await page.waitForSelector(usernameSelector);
+		await page.type(`[name='username']`, credentials.username, { delay: 10 });
 	
-	const loginButtonSelector = `[type='submit']`;
-	await page.waitForSelector(loginButtonSelector);
-	await page.click(loginButtonSelector);
+		const passwordSelector = `[name='password']`;
+		await page.waitForSelector(passwordSelector);
+		await page.type(`[name='password']`, credentials.password, { delay: 10 });
+		
+		const loginButtonSelector = `[type='submit']`;
+		await page.waitForSelector(loginButtonSelector);
+		await page.click(loginButtonSelector);	
+	} catch (error) {
+		await page.close();
+		throw 'Could not login successfully. Please check your credentials, connection or just try again later.';
+	}
 };
 
 export const processLiveBookings = async (credentials: Credentials, browser?: Browser, startDate?: string, endDate?: string) => {
@@ -393,7 +420,13 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
 		await page.waitForSelector(listBookingsSelector, { timeout: 5000 })
 			.then(async () => await getBookings(browser, page))
-			.catch((error) => console.error(`Timeout occurred showing search results. It usually means no bookings were returned. Err: ${error.message}`));
+			.catch(async (error) => {
+				const screenshot = `no_bookings_${new Date().toISOString().replace(/:/g, '-')}.png`;
+				await page.screenshot({
+					path: `./src/services/traveltek/screenshots/${screenshot}`,
+				});
+				console.error(`Timeout occurred showing search results. It usually means no bookings were returned. Screenshot captured: ${screenshot}. Err: ${error.message}`);
+			});
 	} catch (error) {
 		console.log(`${chalk.red(`General exception processing live bookings: ${error.message}`)}`);
 	} finally {
@@ -457,9 +490,9 @@ export const doHistoricalBookings = async ({
 		//	launch a new browser and login for each chunk
 		const browser = await launchBrowser();
 		const page = await browser.newPage();
-		await doLogin(credentials, page);
 
 		try {		
+			await doLogin(credentials, page);
 			for (let i = 0; i < chunk.length; i += bookingsPerChunk) {
 	
 				const arrayOfPromises = [];
@@ -508,9 +541,11 @@ export const runDailyBookingProcessing = async ({
 	endDate?: string, 
 	historicalProcessHasExecuted?: boolean
 }) => {
-	const daysAgoToProcessDaily = (0-Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
+	const daysAgoToProcessDaily = (Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
 	let processingStatus: ProcessingStatus | null = null,
-		hibernationSpinner = null;
+		hibernationSpinner = null,
+		runHistoricalProcessEvery = 2, //14, //	14*5 = 60 minutes cycle
+		runHistorialProcessCounter = 0;
 
 	while (
 		processingStatus === null || 
@@ -519,8 +554,8 @@ export const runDailyBookingProcessing = async ({
 		processingStatus === ProcessingStatus.HIBERNATING
 	) {
 		//	check if the current time is within the processing hours on each iteration
-
 		if (withinDailyProcessingWindow()) {
+			processingStatus = ProcessingStatus.IN_PROGRESS;
 			hibernationSpinner && hibernationSpinner.stop();
 			const browser = await launchBrowser();
 			try {
@@ -528,19 +563,25 @@ export const runDailyBookingProcessing = async ({
 				await browser && browser.close();
 
 				console.log(`\nDaily processing completed for ${startDate} to ${endDate}.`);
-				const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${-1*daysAgoToProcessDaily} days...`;
-				const waitToProcessHistory = createSpinner(waitToProcessHistoryMessage).start();
-				//	Wait for a few seconds before running again because Traveltek API is slow
-				await timeout(15000);
-				waitToProcessHistory.success({ text: `${waitToProcessHistoryMessage}Done` });
 
-				//	live update bookings made in the last n days
-				await processLiveBookings(
-					credentials,
-					null,
-					formatDate(dateAdd(new Date(), daysAgoToProcessDaily, 'days')), 
-					formatDate(dateAdd(new Date(), -1, 'days'))
-				);
+				if (runHistorialProcessCounter < runHistoricalProcessEvery) {
+					const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${daysAgoToProcessDaily} days...`;
+					const waitToProcessHistory = createSpinner(waitToProcessHistoryMessage).start();
+					//	Wait for a few seconds before running again because Traveltek API is slow
+					await timeout(15000);
+					waitToProcessHistory.success({ text: `${waitToProcessHistoryMessage}Done` });
+
+					//	live update bookings made in the last n days
+					await processLiveBookings(
+						credentials,
+						null,
+						formatDate(dateAdd(new Date(), (-1*daysAgoToProcessDaily), 'days')), 
+						formatDate(dateAdd(new Date(), -1, 'days'))
+					);
+					runHistorialProcessCounter++;
+				} else {
+					runHistorialProcessCounter = 0;
+				}
 
 				console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 			} catch (err) {
@@ -551,7 +592,7 @@ export const runDailyBookingProcessing = async ({
 				await timeout(defaultSleepTimeInMs);
 			}
 		} else {
-			//	Daily processing out of hours, so run a short historical processing routine before hibernating
+			//	Daily processing out of hours, so process active historical records before hibernating
 			if (processingStatus === ProcessingStatus.SLEEPING) {
 				try {
 					console.log(chalk.green(`Daily processing end time has passed. Active historical bookings will be processed now...`));
@@ -569,6 +610,7 @@ export const runDailyBookingProcessing = async ({
 					await timeout(defaultSleepTimeInMs);
 				}
 			} else if (processingStatus === ProcessingStatus.HIBERNATING) {
+				//	Process cancelled and complete bookings before hibernating
 				try {
 					console.log(`\n${chalk.green(`Daily and active historical processing is complete. Cancelled and Complete historical bookings will be processed now...`)}`);
 					await runHistoricalBookingProcessing({ 
@@ -626,9 +668,16 @@ export const runSpecificBookingProcessing = async ({
 }) => {
 	const browser = await launchBrowser();
 	const page = await browser.newPage();
-	await doLogin(credentials, page);
 
-	const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
-	await processBookings({ browser, bookingsData, showLogging: true });
-	browser && await browser.close();
+	try {
+		await doLogin(credentials, page);
+
+		const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
+		await processBookings({ browser, bookingsData, showLogging: true });
+	} catch (error) {
+		console.log(`${chalk.red(`General exception occurred processing specific bookings: ${error.message}`)}`);
+		throw error;
+	} finally {
+		browser && await browser.close();
+	}
 }

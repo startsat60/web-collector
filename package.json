@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "source $HOME/.nvm/nvm.sh; nvm use 18 && npm run build && node dist/index.js",
-    "traveltek": "source $HOME/.nvm/nvm.sh; nvm use 18 && npm run build && node dist/index.js service=traveltek",
+    "start": "source $HOME/.nvm/nvm.sh; rm -rf src/services/traveltek/screenshots/*; nvm use 18 && npm run build && node dist/index.js",
+    "traveltek": "source $HOME/.nvm/nvm.sh; rm -rf src/services/traveltek/screenshots/*; nvm use 18 && npm run build && node dist/index.js service=traveltek",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -23,6 +23,7 @@
   "dependencies": {
     "@inquirer/checkbox": "^4.0.0",
     "chalk": "^5.3.0",
+    "dayjs": "^1.11.13",
     "dotenv": "^16.4.5",
     "inquirer": "^11.1.0",
     "nanospinner": "^1.1.0"
