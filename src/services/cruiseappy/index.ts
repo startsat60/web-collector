@@ -12,15 +12,15 @@ export const doLogin = async (credentials: Credentials, page) => {
 
 	// Type into search box
 	const usernameSelector = `[id='user_login']`;
-	await page.waitForSelector(usernameSelector);
+	await page.waitForSelector(usernameSelector, { timeout: 10000 });
 	await page.type(`[id='user_login']`, credentials.username, { delay: 10 });
 
 	const passwordSelector = `[id='user_pass']`;
-	await page.waitForSelector(passwordSelector);
+	await page.waitForSelector(passwordSelector, { timeout: 10000 });
 	await page.type(`[id='user_pass']`, credentials.password, { delay: 10 });
 	
 	const loginButtonSelector = `[type='submit']`;
-	await page.waitForSelector(loginButtonSelector);
+	await page.waitForSelector(loginButtonSelector, { timeout: 10000 });
 	await page.click(loginButtonSelector);
 };
 
@@ -36,9 +36,9 @@ export const runGetCruisesProcess = async ({
 	await page.waitForNavigation();
 
 	const cruiseAppySelector = `[href*='edit.php?post_type=cruises']`;
-	await page.waitForSelector(cruiseAppySelector);
+	await page.waitForSelector(cruiseAppySelector, { timeout: 10000 });
 	await page.click(cruiseAppySelector);
-	await page.waitForSelector(`table.wp-list-table`);
+	await page.waitForSelector(`table.wp-list-table`, { timeout: 10000 });
 
 	const cruiseItems = await page.evaluate(async () => {
 		const cruiseRowSelector = `table.wp-list-table tbody tr`;
@@ -66,7 +66,7 @@ export const getCruises = async (browser, urls: string[]) => {
 };
 
 export const getCruise = async (cruisePage: any) => {
-	await cruisePage.waitForSelector(`[name=post_title]`);
+	await cruisePage.waitForSelector(`[name=post_title]`, { timeout: 10000 });
 	const cruiseData = await cruisePage.evaluate(async () => {
 		const cruiseTitle = document.querySelector(`[name=post_title]`).textContent.trim();
 		return {

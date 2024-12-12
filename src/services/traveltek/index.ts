@@ -43,16 +43,30 @@ export const processBookings = async ({
 			// const { referenceNumber } = booking;
 			// console.log(`Getting booking data for ${referenceNumber}...`);	
 			const bookingPage = await browser.newPage();
-			await bookingPage.goto(booking.url, { timeout: 120000 });
+			await bookingPage.goto(booking.url, { timeout: 300000 });
+			let retryCounter = 0, maxRetries = 3, retryStatus = false;
+
+			while (retryCounter < maxRetries) {
+				await bookingPage.waitForSelector(`table.listtable > tbody > tr.listrow`, { timeout: 20000 })
+				.then(() => retryStatus = true)
+				.catch(async () => {
+					await timeout(10000);
+					await bookingPage.goto(booking.url, { timeout: 120000 });		
+					await timeout(10000);
+					retryCounter++;
+				});
+	
+				if (retryStatus) { retryStatus = false; retryCounter = 0; break; };
+			};
 
 			const bookingDetailsSelector = `table.detailstable > tbody > tr.detailsrow`;
-			await bookingPage.waitForSelector(bookingDetailsSelector)
-			.catch(async () => {
+			await bookingPage.waitForSelector(bookingDetailsSelector, { timeout: 20000 })
+			.catch(async (e) => {
 				const screenshot = `bookings_data_exception_${new Date().toISOString().replace(/:/g, '-')}.png`;
 				await bookingPage.screenshot({
 					path: `./src/services/traveltek/screenshots/${screenshot}`,
 				});
-				errors.push(`${booking.referenceNumber ?? booking.url} - Booking details data exception. Screenshot captured: ${screenshot}. Not updating.`);
+				errors.push(`${booking.referenceNumber ?? booking.url} - Booking details data exception. Screenshot captured: ${screenshot}. Not updating. Message: ${e.message}`);
 				await bookingPage.close();
 			});
 	
@@ -171,18 +185,30 @@ export const processBookings = async ({
 		
 			//	Costings
 			const costingsSelector = `[href*='costingbreakdown']`;
-			await bookingPage.waitForSelector(costingsSelector);
+			await bookingPage.waitForSelector(costingsSelector, { timeout: 20000 });
 			await bookingPage.click(costingsSelector);
-			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`)
+			await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`, { timeout: 20000 })
 			.catch(async (e) => {
-				const screenshot = `costings_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
-				await bookingPage.screenshot({
-					path: `./src/services/traveltek/screenshots/${screenshot}`,
-				});
-				errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Screenshot captured: ${screenshot}. Not updating.`);
-				await bookingPage.close();
-				throw e;
+				while (retryCounter < maxRetries) {
+					await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`, { timeout: 20000 })
+					.then(() => retryStatus = true)
+					.catch(async () => {
+						//	Wait for a few seconds before trying again - then create screenshot if max retries reached
+						await timeout(10000);
+						if (retryCounter === maxRetries) {
+							const screenshot = `costings_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
+							await bookingPage.screenshot({ path: `./src/services/traveltek/screenshots/${screenshot}`, });
+							errors.push(`${booking.referenceNumber ?? booking.url} - Costings data exception. Screenshot captured: ${screenshot}. Not updating. Message: ${e.message}`);
+							await bookingPage.close();
+							throw e;
+						}
+						retryCounter++;
+					});
+		
+					if (retryStatus) { retryStatus = false; retryCounter = 0; break; };
+				};
 			});
+
 			const costingsData = await bookingPage.evaluate(() => {
 				const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
 				return {
@@ -199,17 +225,28 @@ export const processBookings = async ({
 	
 			//	Receipts
 			const receiptsSelector = `[href*='receipts']`;
-			await bookingPage.waitForSelector(receiptsSelector);
+			await bookingPage.waitForSelector(receiptsSelector, { timeout: 20000 });
 			await bookingPage.click(receiptsSelector);
-			await bookingPage.waitForSelector(`[href*='cardpayment.pl']`)
+			await bookingPage.waitForSelector(`[href*='cardpayment.pl']`, { timeout: 20000 })
 			.catch(async (e) => {
-				const screenshot = `receipts_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
-				await bookingPage.screenshot({
-					path: `./src/services/traveltek/screenshots/${screenshot}`,
-				});
-				errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Screenshot captured: ${screenshot}. Not updating.`);
-				await bookingPage.close();
-				throw e;
+				while (retryCounter < maxRetries) {
+					await bookingPage.waitForSelector(`[href*='cardpayment.pl']`, { timeout: 20000 })
+					.then(() => retryStatus = true)
+					.catch(async () => {
+						//	Wait for a few seconds before trying again - then create screenshot if max retries reached
+						await timeout(10000);
+						if (retryCounter === maxRetries) {
+							const screenshot = `receipts_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
+							await bookingPage.screenshot({ path: `./src/services/traveltek/screenshots/${screenshot}`, });
+							errors.push(`${booking.referenceNumber ?? booking.url} - Receipts exception. Screenshot captured: ${screenshot}. Not updating. Message: ${e.message}`);
+							await bookingPage.close();
+							throw e;			
+						}
+						retryCounter++;
+					});
+		
+					if (retryStatus) { retryStatus = false; retryCounter = 0; break; };
+				};
 			});
 			const receiptsData = await bookingPage.evaluate(() => {
 				const receipts = [];
@@ -250,14 +287,15 @@ export const processBookings = async ({
 			});
 			bookingData[0].additional_data['receipts'] = receiptsData ?? [];
 	
+			const defaultCustomer = bookingData[0].additional_data['passengers'].find((passenger) => passenger.name === bookingData[0].additional_data['customer_name']);
 			//	Primary Booking Passenger - this navigates to a new page so do all booking processing before this
 			const passengerSelector = `[href*='customer_view']`;
 			await bookingPage.waitForSelector(passengerSelector, { timeout: 10000 })
 			.then(async () => {
-				const defaultCustomer = bookingData[0].additional_data['passengers'].find((passenger) => passenger.name === bookingData[0].additional_data['customer_name']);
 				await bookingPage.click(passengerSelector);
 				bookingData[0].additional_data['primary_passenger'] = await bookingPage.waitForSelector(`.boxstyle1`, { timeout: 5000 })
 				.then(async () => {
+					//	Allow errors to fall out to the catch block
 					return await bookingPage.evaluate(() => {
 						const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
 						const passengerName = passengerContactDetailsElement[1].textContent.trim();
@@ -274,34 +312,19 @@ export const processBookings = async ({
 							postcode: passengerPostcode,
 						};
 					});
-				})
-				.catch(async () => {
-					return {
-						name: defaultCustomer ? defaultCustomer['name'] : '',
-						email: defaultCustomer ? defaultCustomer['email'] : '',
-						phone: defaultCustomer ? defaultCustomer['phone'] : '',
-						dob: '',
-						postcode: '',
-					};
-					// await bookingPage.close();
 				});
 			})
-			.catch(async (e) => {
-				const screenshot = `customer_data_exception_${booking.referenceNumber}_${new Date().toISOString().replace(/:/g, '-')}.png`;
-				await bookingPage.screenshot({
-					path: `./src/services/traveltek/screenshots/${screenshot}`,
-				});
-				errors.push(`${booking.referenceNumber ?? booking.url} - Customer page load exception. Screenshot captured: ${screenshot}. Updating with default data. Message: ${e.message}`);
+			.catch(async () => {
+				//	Customer page load exception. Updating with default data.
 				bookingData[0].additional_data['primary_passenger'] = {
-					name: '',
-					email: '',
-					phone: '',
+					name: defaultCustomer['name'] ?? 'Unknown',
+					email: defaultCustomer['email'] ?? '',
+					phone: defaultCustomer['phone'] ?? '',
 					dob: '',
 					postcode: '',
 				};
-				// await bookingPage.close();
 			});
-	
+
 			await fetch(apiUrlBase, {
 				method: 'POST',
 				headers: {
@@ -373,15 +396,15 @@ export const doLogin = async (credentials: Credentials, page) => {
 
 		// Type into search box
 		const usernameSelector = `[name='username']`;
-		await page.waitForSelector(usernameSelector);
+		await page.waitForSelector(usernameSelector, { timeout: 20000 });
 		await page.type(`[name='username']`, credentials.username, { delay: 10 });
 	
 		const passwordSelector = `[name='password']`;
-		await page.waitForSelector(passwordSelector);
+		await page.waitForSelector(passwordSelector, { timeout: 20000 });
 		await page.type(`[name='password']`, credentials.password, { delay: 10 });
 		
 		const loginButtonSelector = `[type='submit']`;
-		await page.waitForSelector(loginButtonSelector);
+		await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
 		await page.click(loginButtonSelector);	
 	} catch (error) {
 		await page.close();
@@ -418,7 +441,7 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 			cruisevoyagecode=&from=&action=&submit=Search+Portfolios`, { timeout: 120000 });
 
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
-		await page.waitForSelector(listBookingsSelector, { timeout: 5000 })
+		await page.waitForSelector(listBookingsSelector, { timeout: 20000 })
 			.then(async () => await getBookings(browser, page))
 			.catch(async (error) => {
 				const screenshot = `no_bookings_${new Date().toISOString().replace(/:/g, '-')}.png`;
@@ -475,7 +498,7 @@ export const doHistoricalBookings = async ({
 	console.log(`Syncing ${existingBookings.length} historical bookings...`);
 	let processBookingsSpinner = null;
 	const chunkSize = 200;
-	const bookingsPerChunk = 40;
+	const bookingsPerChunk = 10;
 	const chunks = [];
 
 	for (let i = 0; i < existingBookings.length; i += chunkSize) {
