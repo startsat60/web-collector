@@ -312,14 +312,14 @@ export const processBookings = async ({
 							postcode: passengerPostcode,
 						};
 					});
-				});
+				})
 			})
-			.catch(async () => {
+			.catch(async (e) => {
 				//	Customer page load exception. Updating with default data.
 				bookingData[0].additional_data['primary_passenger'] = {
-					name: defaultCustomer['name'] ?? 'Unknown',
-					email: defaultCustomer['email'] ?? '',
-					phone: defaultCustomer['phone'] ?? '',
+					name: defaultCustomer ? defaultCustomer['name'] : 'Unknown',
+					email: defaultCustomer ? defaultCustomer['email'] : '',
+					phone: defaultCustomer ? defaultCustomer['phone'] : '',
 					dob: '',
 					postcode: '',
 				};
@@ -405,10 +405,20 @@ export const doLogin = async (credentials: Credentials, page) => {
 		
 		const loginButtonSelector = `[type='submit']`;
 		await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
-		await page.click(loginButtonSelector);	
+		await page.click(loginButtonSelector);
+		await page.evaluate(async () => {
+			if (!document.querySelector(`[name='username']`)) {
+				//	Login page has not simply reloaded due to failure
+				return true;
+			}
+			throw new Error(`Login page re-loaded. Login failed.`);
+		})
+		.catch((e) => {
+			throw new Error(`Login exception. Login failed. Message: ${e.message}`);
+		})
 	} catch (error) {
 		await page.close();
-		throw 'Could not login successfully. Please check your credentials, connection or just try again later.';
+		throw new Error(`Could not login successfully. Message: ${error.message}`);
 	}
 };
 
@@ -498,7 +508,7 @@ export const doHistoricalBookings = async ({
 	console.log(`Syncing ${existingBookings.length} historical bookings...`);
 	let processBookingsSpinner = null;
 	const chunkSize = 200;
-	const bookingsPerChunk = 10;
+	const bookingsPerChunk = 20;
 	const chunks = [];
 
 	for (let i = 0; i < existingBookings.length; i += chunkSize) {
@@ -608,7 +618,7 @@ export const runDailyBookingProcessing = async ({
 
 				console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 			} catch (err) {
-				console.log(`${chalk.red(`General exception occurred processing daily bookings: ${err.message}`)}`);
+				console.log(`${chalk.red(`General exception occurred processing daily bookings. Skipping this process and returning to sleep. Message: ${err.message}`)}`);
 			} finally {
 				browser && await browser.close();
 				processingStatus = ProcessingStatus.SLEEPING;
