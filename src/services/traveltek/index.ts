@@ -390,36 +390,47 @@ export const getBookings = async (browser, page) => {
 	}
 };
 
-export const doLogin = async (credentials: Credentials, page) => {
-	try {
-		page.goto(loginUrl, { timeout: 120000 });
-
-		// Type into search box
-		const usernameSelector = `[name='username']`;
-		await page.waitForSelector(usernameSelector, { timeout: 20000 });
-		await page.type(`[name='username']`, credentials.username, { delay: 10 });
-	
-		const passwordSelector = `[name='password']`;
-		await page.waitForSelector(passwordSelector, { timeout: 20000 });
-		await page.type(`[name='password']`, credentials.password, { delay: 10 });
+export const doLogin = async (credentials: Credentials, browser, page) => {
+	let retryCounter = 1, maxRetries = 3, retryStatus = false;
+	while (retryCounter <= maxRetries) {
+		try {
+			page.goto(loginUrl, { timeout: 120000 });
+			const usernameSelector = `[name='username']`;
+			await page.waitForSelector(usernameSelector, { timeout: 20000 });
+			await page.type(`[name='username']`, credentials.username, { delay: 10 });
 		
-		const loginButtonSelector = `[type='submit']`;
-		await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
-		await page.click(loginButtonSelector);
-		await page.evaluate(async () => {
-			if (!document.querySelector(`[name='username']`)) {
-				//	Login page has not simply reloaded due to failure
-				return true;
-			}
-			throw new Error(`Login page re-loaded. Login failed.`);
-		})
-		.catch((e) => {
-			throw new Error(`Login exception. Login failed. Message: ${e.message}`);
-		})
-	} catch (error) {
-		await page.close();
-		throw new Error(`Could not login successfully. Message: ${error.message}`);
-	}
+			const passwordSelector = `[name='password']`;
+			await page.waitForSelector(passwordSelector, { timeout: 20000 });
+			await page.type(`[name='password']`, credentials.password, { delay: 10 });
+			
+			const loginButtonSelector = `[type='submit']`;
+			await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
+			await page.click(loginButtonSelector);
+			await page.evaluate(async () => {
+				if (!document.querySelector(`input[name='username']`)) {
+					//	Login page has not simply reloaded due to failure
+					return true;
+				}
+				throw new Error(`Login page re-loaded. Trying again.`);
+			})
+			.then(() => retryStatus = true);
+
+			if (retryStatus) break;
+		} catch (error) {
+			const waitTime = retryCounter*30000;
+			console.log(`${chalk.gray(`Login attempt ${retryCounter} failed. ${(retryCounter <= maxRetries) ? `Waiting ${waitTime/1000}secs before retrying...` : ''}: ${error.message}`)}`);
+			await timeout(retryCounter*30000);
+			browser && await browser.close();
+			browser = await launchBrowser();
+			page = await browser.newPage();
+			retryCounter++;
+		}
+	};
+	return {
+		browser,
+		page,
+		loggedIn: retryStatus
+	};
 };
 
 export const processLiveBookings = async (credentials: Credentials, browser?: Browser, startDate?: string, endDate?: string) => {
@@ -436,10 +447,19 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 
 	// Launch the browser and open a new blank page
 	browser = browser ?? await launchBrowser();
-	const page = await browser.newPage();
+	let page = await browser.newPage();
 
 	try {
-		await doLogin(credentials, page);
+		const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
+			await doLogin(credentials, browser, page).then((result) => { 
+				if (!result.loggedIn) { 
+					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+					process.exit(0); 
+				} 
+				return result; 
+			});
+		browser = loginResult.browser;
+		page = loginResult.page;
 
 		await page.goto(`https://isell.traveltek.net/SAS/backoffice/boportfolios.pl?
 			reference=&firstname=&lastname=&tradingnameid=&datetype=created&
@@ -463,6 +483,7 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 	} catch (error) {
 		console.log(`${chalk.red(`General exception processing live bookings: ${error.message}`)}`);
 	} finally {
+		page && await page.close();
 		browser && await browser.close();
 	}
 };
@@ -521,11 +542,21 @@ export const doHistoricalBookings = async ({
 	
 	for await (const chunk of chunks) {
 		//	launch a new browser and login for each chunk
-		const browser = await launchBrowser();
-		const page = await browser.newPage();
+		let browser = await launchBrowser();
+		let page = await browser.newPage();
 
 		try {		
-			await doLogin(credentials, page);
+			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
+			await doLogin(credentials, browser, page).then((result) => { 
+				if (!result.loggedIn) { 
+					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+					process.exit(0); 
+				} 
+				return result; 
+			});
+			browser = loginResult.browser;
+			page = loginResult.page;
+
 			for (let i = 0; i < chunk.length; i += bookingsPerChunk) {
 	
 				const arrayOfPromises = [];
@@ -543,6 +574,7 @@ export const doHistoricalBookings = async ({
 			processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
 		} finally {
 			//	close browser between each chunk processing pass
+			page && await page.close();
 			await browser.close();
 			const sleepTimeoutMs = 5000;
 			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
@@ -699,11 +731,20 @@ export const runSpecificBookingProcessing = async ({
 	credentials: Credentials, 
 	bookingUrls: string
 }) => {
-	const browser = await launchBrowser();
-	const page = await browser.newPage();
+	let browser = await launchBrowser();
+	let page = await browser.newPage();
 
 	try {
-		await doLogin(credentials, page);
+		const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
+			await doLogin(credentials, browser, page).then((result) => { 
+				if (!result.loggedIn) { 
+					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+					process.exit(0); 
+				} 
+				return result; 
+			});
+		browser = loginResult.browser;
+		page = loginResult.page;
 
 		const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
 		await processBookings({ browser, bookingsData, showLogging: true });
@@ -711,6 +752,7 @@ export const runSpecificBookingProcessing = async ({
 		console.log(`${chalk.red(`General exception occurred processing specific bookings: ${error.message}`)}`);
 		throw error;
 	} finally {
+		page && await page.close();
 		browser && await browser.close();
 	}
 }
