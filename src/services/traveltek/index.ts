@@ -125,7 +125,7 @@ export const processBookings = async ({
 				}
 	
 				const elements = document.querySelector('#elementlist');
-				const portfoliosElements = elements.querySelectorAll('.portfolioelement');
+				const portfoliosElements = elements?.querySelectorAll('.portfolioelement') ?? [];
 				const elementsData = [];
 				portfoliosElements.forEach((portfoliosElement) => {
 					const portfolio = portfoliosElement.querySelectorAll('.listtable tr td');
@@ -251,38 +251,44 @@ export const processBookings = async ({
 			const receiptsData = await bookingPage.evaluate(() => {
 				const receipts = [];
 				const receiptTables = document.querySelectorAll(`.listtable`);
-				if (receiptTables.length === 0) return receipts;
-	
-				//	Receipts
-				const receiptsRows = receiptTables[0].querySelectorAll(`.listrow`);
-				receiptsRows.forEach((receipt) => {
-					receipts.push({
-						id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
-						reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
-						date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
-						payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
-						total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
-						card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
-						unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
-						type: 'receipt',
-					});
-				});
-				if (receiptTables.length === 1) return receipts;
-	
-				//	Refunds
-				const refundRows = receiptTables[1].querySelectorAll(`.listrow`);
-				refundRows.forEach((receipt) => {
-					receipts.push({
-						id: receipt.querySelector(`td:nth-child(1)`).textContent.trim(),
-						reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
-						date: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
-						payment_method: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
-						total_value: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
-						card_fee: null,
-						unapportioned_amount: null,
-						type: 'refund',
-					});
-				});
+				// if (receiptTables.length === 0) return receipts;
+
+				for (let i=0; i < receiptTables.length; i++) {
+					const firstRowCellSelector = receiptTables[i].querySelector(`.listheader td:nth-child(3)`);
+					if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reference') {
+						//	Receipts
+						const receiptsRows = receiptTables[i].querySelectorAll(`.listrow`);
+						receiptsRows.forEach((receipt) => {
+							receipts.push({
+								id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+								reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+								date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+								payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
+								total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
+								card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+								unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
+								type: 'receipt',
+							});
+						});		
+					};
+
+					if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reason') {
+						//	Refunds
+						const refundRows = receiptTables[i].querySelectorAll(`.listrow`);
+						refundRows.forEach((refund) => {
+							receipts.push({
+								id: refund.querySelector(`td:nth-child(1)`).textContent.trim(),
+								reference: refund.querySelector(`td:nth-child(3)`).textContent.trim(),
+								date: refund.querySelector(`td:nth-child(2)`).textContent.trim(),
+								payment_method: refund.querySelector(`td:nth-child(4)`).textContent.trim(),
+								total_value: refund.querySelector(`td:nth-child(7)`).textContent.trim(),
+								card_fee: null,
+								unapportioned_amount: null,
+								type: 'refund',
+							});
+						});
+					};
+				};
 				return receipts;
 			});
 			bookingData[0].additional_data['receipts'] = receiptsData ?? [];
@@ -677,10 +683,16 @@ export const runDailyBookingProcessing = async ({
 			} else if (processingStatus === ProcessingStatus.HIBERNATING) {
 				//	Process cancelled and complete bookings before hibernating
 				try {
-					console.log(`\n${chalk.green(`Daily and active historical processing is complete. Cancelled and Complete historical bookings will be processed now...`)}`);
+					console.log(`\n${chalk.green(`Daily and active historical processing is complete. Complete historical bookings will be processed now...`)}`);
 					await runHistoricalBookingProcessing({ 
 						credentials,
-						statuses: ['Complete', 'Cancelled'],
+						statuses: ['Complete'],
+					 });
+
+					console.log(`\n${chalk.green(`Daily, active and complete historical processing is complete. Cancelled historical bookings will be processed now...`)}`);
+					await runHistoricalBookingProcessing({ 
+						credentials,
+						statuses: ['Cancelled'],
 					 });
 					//	Reset the processing status to null so the loop can begin again when processing start time is reached
 					processingStatus = null;
