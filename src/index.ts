@@ -38,7 +38,7 @@ import { runDailyBookingProcessing } from "./services/traveltek/index.js";
 				});
 			} else if (service === 'CRUISEAPPY') {
 				console.log(`\n${chalk.green('Running CruiseAppy Process...')}`);
-				// await selectCruiseAppyProcess(await cruiseAppyMenu());
+				await selectCruiseAppyProcess(await cruiseAppyMenu());
 			}
 			process.exit(0);
 		} else {

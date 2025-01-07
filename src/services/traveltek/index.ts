@@ -397,7 +397,7 @@ export const getBookings = async (browser, page) => {
 };
 
 export const doLogin = async (credentials: Credentials, browser, page) => {
-	let retryCounter = 1, maxRetries = 3, retryStatus = false;
+	let retryCounter = 1, maxRetries = 5, retryStatus = false;
 	while (retryCounter <= maxRetries) {
 		try {
 			page.goto(loginUrl, { timeout: 120000 });
