@@ -702,7 +702,7 @@ export const runDailyBookingProcessing = async ({
 					await timeout(defaultSleepTimeInMs);
 				}
 			} else {
-				!hibernationSpinner && (hibernationSpinner = createSpinner(`\n${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
+				!hibernationSpinner && (hibernationSpinner = createSpinner(`${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
 				processingStatus = null;
 				//	reset dates while out of hours in preparation for next day's processing
 				startDate = formatDate();
