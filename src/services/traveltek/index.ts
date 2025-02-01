@@ -615,7 +615,7 @@ export const runDailyBookingProcessing = async ({
 	const daysAgoToProcessDaily = (Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
 	let processingStatus: ProcessingStatus | null = null,
 		hibernationSpinner = null,
-		runHistoricalProcessEvery = 2, //14, //	14*5 = 60 minutes cycle
+		runHistoricalProcessEvery = 10,	//	Every 10 iterations, process historical bookings
 		runHistorialProcessCounter = 0;
 
 	while (
@@ -627,7 +627,10 @@ export const runDailyBookingProcessing = async ({
 		//	check if the current time is within the processing hours on each iteration
 		if (withinDailyProcessingWindow()) {
 			processingStatus = ProcessingStatus.IN_PROGRESS;
-			hibernationSpinner && hibernationSpinner.stop();
+			if (hibernationSpinner) {
+				hibernationSpinner.stop();
+				hibernationSpinner = null;
+			};
 			const browser = await launchBrowser();
 			try {
 				await processLiveBookings(credentials, browser, startDate, endDate);
@@ -635,22 +638,23 @@ export const runDailyBookingProcessing = async ({
 
 				console.log(`\nDaily processing completed for ${startDate} to ${endDate}.`);
 
-				if (runHistorialProcessCounter < runHistoricalProcessEvery) {
+				if (runHistorialProcessCounter <= runHistoricalProcessEvery) {
+					runHistorialProcessCounter++;
+				} else {
 					const waitToProcessHistoryMessage = `Preparing to process bookings made in the last ${daysAgoToProcessDaily} days...`;
 					const waitToProcessHistory = createSpinner(waitToProcessHistoryMessage).start();
 					//	Wait for a few seconds before running again because Traveltek API is slow
 					await timeout(15000);
 					waitToProcessHistory.success({ text: `${waitToProcessHistoryMessage}Done` });
 
-					//	live update bookings made in the last n days
+					//	live update bookings made in the n days before today (because today's have already been processed)
 					await processLiveBookings(
 						credentials,
 						null,
 						formatDate(dateAdd(new Date(), (-1*daysAgoToProcessDaily), 'days')), 
 						formatDate(dateAdd(new Date(), -1, 'days'))
 					);
-					runHistorialProcessCounter++;
-				} else {
+
 					runHistorialProcessCounter = 0;
 				}
 

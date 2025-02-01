@@ -55,15 +55,39 @@ export const scrollPageToBottom = async ( { page }) => {
 	});
 };
 
-export const runGetCruisesProcess = async ({
-	bookingUrls,
+export const runGetCruiseFromUrlsProcess = async ({
+	productUrls
+}: {
+	productUrls: string
 }) => {
 	const browser = await launchBrowser();
 	const page = await browser.newPage();
 	page.setViewport({ width: 1200, height: 800 });
 	//	Can replace limit querystring parameter with a higher value to get more results
 	//const searchUrl = `https://cruise.travelat60.com/search/?type=all&layout=list&anchor=&sm_cruises=&sm_campaigns=&limit=10&max_results=0&leaf=0&month=&depart=&order=&focus=&group_ids=&search_id=&duration_from=&duration_to=&cost=&date_from=2025-04-01&date_to=2025-07-31&adults=2&children=0&children_age_1=&children_age_2=&children_age_3=&destination%5B%5D=Alaska&price_min=&price_max=50000&cruiseline%5B%5D=Holland%20America%20Line`;
-	await page.goto(bookingUrls);
+	const urls = productUrls.split(',');
+
+	for await (const url of urls) {
+		const spinnerText = `Getting latest data for ${url}...`;
+		const cruiseSpinner = createSpinner(spinnerText).start();
+		await page.goto(url);
+		const latestPricesCheckedSelector = `#cabin-filters`;
+		await page.waitForSelector(latestPricesCheckedSelector, { timeout: 120000 });
+		cruiseSpinner.success({ text: `${spinnerText}Done` });
+	}
+	await page.close();
+	await browser.close();
+};
+
+export const runGetCruisesFromSearchProcess = async ({
+	searchUrl,
+}) => {
+	const browser = await launchBrowser();
+	const page = await browser.newPage();
+	page.setViewport({ width: 1200, height: 800 });
+	//	Can replace limit querystring parameter with a higher value to get more results
+	//const searchUrl = `https://cruise.travelat60.com/search/?type=all&layout=list&anchor=&sm_cruises=&sm_campaigns=&limit=10&max_results=0&leaf=0&month=&depart=&order=&focus=&group_ids=&search_id=&duration_from=&duration_to=&cost=&date_from=2025-04-01&date_to=2025-07-31&adults=2&children=0&children_age_1=&children_age_2=&children_age_3=&destination%5B%5D=Alaska&price_min=&price_max=50000&cruiseline%5B%5D=Holland%20America%20Line`;
+	await page.goto(searchUrl);
 	const nextPageSelector = `button.load-more`;
 	
 	await scrollPageToBottom({ page });

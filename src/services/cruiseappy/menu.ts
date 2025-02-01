@@ -2,7 +2,7 @@ import inquirer from "inquirer";
 import { createSpinner } from "nanospinner";
 import { sleep } from "../../helpers/lib.js";
 import { promptForCredentials } from "../../helpers/menu.js";
-import { runGetCruisesProcess } from "./index.js";
+import { runGetCruiseFromUrlsProcess, runGetCruisesFromSearchProcess } from "./index.js";
 import chalk from "chalk";
 import { ProcessType } from "./lib.js";
 
@@ -27,14 +27,28 @@ export const cruiseAppyMenu = async () => {
   spinner.success({ text: `Preparing...Done` });
 
   if (
-    answers.processToRun === ProcessType.SEARCH_URL || 
-    answers.processToRun === ProcessType.SPECIFIC_PRODUCT
+    answers.processToRun === ProcessType.SEARCH_URL
   ) {
     bookingUrlsDelimited = await inquirer.prompt([
       {
         name: 'bookingUrl',
         type: 'input',
         message: 'Enter the search URL:',
+        validate: (input) => {
+          return input.length > 0 || 'URL cannot be empty';
+        },
+      },
+    ]);
+  }
+
+  if (
+    answers.processToRun === ProcessType.SPECIFIC_PRODUCT
+  ) {
+    bookingUrlsDelimited = await inquirer.prompt([
+      {
+        name: 'bookingUrl',
+        type: 'input',
+        message: 'Enter the product URLs separated by a comma (or single URL):',
         validate: (input) => {
           return input.length > 0 || 'URL cannot be empty';
         },
@@ -53,13 +67,16 @@ export const selectCruiseAppyProcess = async (processToRun) => {
 	switch (processToRun.process) {
 		case ProcessType.SEARCH_URL:
 			console.log(`\n${chalk.green('Getting cruises...')}`);
-			await runGetCruisesProcess({
-        bookingUrls: processToRun.bookingUrl,
+			await runGetCruisesFromSearchProcess({
+        searchUrl: processToRun.bookingUrl,
       });
 			break;
     case ProcessType.SPECIFIC_PRODUCT:
-      console.log(`\n${chalk.green('Getting specific product...')}`);
-      throw new Error('Not implemented yet');
+			console.log(`\n${chalk.green('Getting cruises...')}`);
+			await runGetCruiseFromUrlsProcess({
+        productUrls: processToRun.bookingUrl,
+      });
+			break;
 		default:
 			break;
 	};
