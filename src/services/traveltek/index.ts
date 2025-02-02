@@ -477,6 +477,11 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 			cruisevoyagecode=&from=&action=&submit=Search+Portfolios`, { timeout: 120000 });
 
 		const listBookingsSelector = `table.listtable > tbody > tr.listrow`;
+		if (await page.$(listBookingsSelector) === null) {
+			console.log(`${chalk.red(`No bookings found between ${startDate} and ${endDate}.`)}`);
+			return;
+		}
+
 		await page.waitForSelector(listBookingsSelector, { timeout: 20000 })
 			.then(async () => await getBookings(browser, page))
 			.catch(async (error) => {
@@ -628,8 +633,11 @@ export const runDailyBookingProcessing = async ({
 		if (withinDailyProcessingWindow()) {
 			processingStatus = ProcessingStatus.IN_PROGRESS;
 			if (hibernationSpinner) {
+				//	waking from hibernation so reset everything
 				hibernationSpinner.stop();
 				hibernationSpinner = null;
+				startDate = formatDate();
+				endDate = formatDate();
 			};
 			const browser = await launchBrowser();
 			try {
@@ -708,9 +716,6 @@ export const runDailyBookingProcessing = async ({
 			} else {
 				!hibernationSpinner && (hibernationSpinner = createSpinner(`${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
 				processingStatus = null;
-				//	reset dates while out of hours in preparation for next day's processing
-				startDate = formatDate();
-				endDate = formatDate();
 				await timeout(defaultSleepTimeInMs);
 			}
 		}
