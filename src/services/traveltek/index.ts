@@ -528,7 +528,11 @@ export const doHistoricalBookings = async ({
 			referenceNumber: conversion_reference,
 			url: traveltek_url
 		}
-	}));	
+	}))
+	.catch((err) => {
+		console.error(`Error fetching historical bookings: ${err.message}`);
+		return [];
+	});	
 
 	if (existingBookings.length === 0) {
 		console.log(`\nNo historical tasks between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} to do. Exiting...`);
@@ -668,6 +672,7 @@ export const runDailyBookingProcessing = async ({
 
 				console.log(`Sleeping for ${defaultSleepTimeInMs/1000/60} minute(s) after processing bookings for ${startDate} to ${endDate}. Running again at ${formatTime(dateAdd(new Date(), (defaultSleepTimeInMs/1000/60), 'minutes'))}.\n`);
 			} catch (err) {
+				processingStatus === null;
 				console.log(`${chalk.red(`General exception occurred processing daily bookings. Skipping this process and returning to sleep. Message: ${err.message}`)}`);
 			} finally {
 				browser && await browser.close();
@@ -688,6 +693,7 @@ export const runDailyBookingProcessing = async ({
 						ProcessingStatus.SLEEPING : 
 						ProcessingStatus.HIBERNATING;
 				} catch (err) {
+					processingStatus === null;
 					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
@@ -709,6 +715,7 @@ export const runDailyBookingProcessing = async ({
 					//	Reset the processing status to null so the loop can begin again when processing start time is reached
 					processingStatus = null;
 				} catch (err) {
+					processingStatus === null;
 					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
