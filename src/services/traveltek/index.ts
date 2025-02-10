@@ -640,9 +640,9 @@ export const runDailyBookingProcessing = async ({
 				//	waking from hibernation so reset everything
 				hibernationSpinner.stop();
 				hibernationSpinner = null;
-				startDate = formatDate();
-				endDate = formatDate();
 			};
+			startDate = formatDate();
+			endDate = formatDate();
 			const browser = await launchBrowser();
 			try {
 				await processLiveBookings(credentials, browser, startDate, endDate);
