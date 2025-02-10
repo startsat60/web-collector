@@ -694,7 +694,7 @@ export const runDailyBookingProcessing = async ({
 						ProcessingStatus.HIBERNATING;
 				} catch (err) {
 					processingStatus === null;
-					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+					console.log(`${chalk.red(`General exception occurred processing historical bookings while SLEEPING: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
 				}
@@ -716,7 +716,7 @@ export const runDailyBookingProcessing = async ({
 					processingStatus = null;
 				} catch (err) {
 					processingStatus === null;
-					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+					console.log(`${chalk.red(`General exception occurred processing historical bookings while HIBERNATING: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
 				}
@@ -740,16 +740,21 @@ export const runHistoricalBookingProcessing = async ({
 	endDate?: string, 
 	statuses?: string[]
 }) => {
-	const historicalDataStartDate = startDate ?? 
+	try {
+		const historicalDataStartDate = startDate ?? 
 		(process.env.HISTORICAL_PROCESSING_DAY_0 ? 
 			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
 			'2019-06-01'
 		);	// Defaults back to day 1 or Traveltek data
-	const historicalDataEndDate = endDate ?? formatDate();
+		const historicalDataEndDate = endDate ?? formatDate();
 
-	await doHistoricalBookings({ credentials, historicalDataStartDate, historicalDataEndDate, statuses });
-	//	Let's allow some time to pass before trying again
-	await timeout(10000);
+		await doHistoricalBookings({ credentials, historicalDataStartDate, historicalDataEndDate, statuses });
+	} catch (err) {
+		console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+	} finally {
+		//	Let's allow some time to pass before trying again
+		await timeout(10000);		
+	}
 };
 
 export const runSpecificBookingProcessing = async ({
@@ -777,7 +782,7 @@ export const runSpecificBookingProcessing = async ({
 		const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
 		await processBookings({ browser, bookingsData, showLogging: true });
 	} catch (error) {
-		console.log(`${chalk.red(`General exception occurred processing specific bookings: ${error.message}`)}`);
+		console.log(`${chalk.red(`General exception occurred processing specific historical bookings: ${error.message}`)}`);
 		throw error;
 	} finally {
 		page && await page.close();
