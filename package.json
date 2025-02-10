@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "source $HOME/.nvm/nvm.sh; rm -rf src/services/traveltek/screenshots/*; nvm use 18 && npm run build && node dist/index.js",
     "traveltek": "source $HOME/.nvm/nvm.sh; rm -rf src/services/traveltek/screenshots/*; nvm use 18 && npm run build && node dist/index.js service=traveltek",
+    "unattended": "source $HOME/.nvm/nvm.sh; git pull; rm -rf src/services/traveltek/screenshots/*; nvm use 18 && npm run build && node dist/index.js service=traveltek",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
