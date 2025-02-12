@@ -4,6 +4,7 @@ export enum ProcessType {
   HISTORICAL = 'HISTORICAL',
   SPECIFIC_BOOKING = 'SPECIFIC_BOOKING',
   LIVE_DATE_RANGE = 'LIVE_DATE_RANGE',
+  LAST_PROCESSED = 'LAST_PROCESSED',
 };
 
 export enum ProcessingStatus {

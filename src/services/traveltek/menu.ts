@@ -5,13 +5,14 @@ import { createSpinner } from "nanospinner";
 import { promptForCredentials, promptForDates } from "../../helpers/menu.js";
 import { ProcessType } from "./lib.js";
 import chalk from "chalk";
-import { processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./index.js";
+import { doLastProcessedBookings, processLiveBookings, runDailyBookingProcessing, runHistoricalBookingProcessing, runSpecificBookingProcessing } from "./index.js";
 
 export const availableProcesses = [
   { value: ProcessType.DAILY, name: 'Live Traveltek Booking Processing (Runs in a loop)' },
   { value: ProcessType.HISTORICAL, name: 'Historical Booking Processing by Date Range (Sync)' },
   { value: ProcessType.SPECIFIC_BOOKING, name: 'Live Traveltek Processing by specific booking URL(s)' },
   { value: ProcessType.LIVE_DATE_RANGE, name: 'Live Traveltek Processing by date range' },
+  { value: ProcessType.LAST_PROCESSED, name: 'Live Traveltek Processing by last processed date range' },
 ];
 
 export const promptForBookingStatus = async () => {
@@ -48,7 +49,8 @@ export const travelTekMenu = async () => {
 
   if (answers.processToRun === ProcessType.HISTORICAL || 
     answers.processToRun === ProcessType.DAILY || 
-    answers.processToRun === ProcessType.LIVE_DATE_RANGE
+    answers.processToRun === ProcessType.LIVE_DATE_RANGE || 
+    answers.processToRun === ProcessType.LAST_PROCESSED
   ) {
     credentials = await promptForCredentials();
     if (answers.processToRun === ProcessType.DAILY || 
@@ -56,7 +58,7 @@ export const travelTekMenu = async () => {
     ) {
       dateRange = await promptForDates(currentDate, currentDate);
     };
-    if (answers.processToRun === ProcessType.HISTORICAL) {
+    if (answers.processToRun === ProcessType.HISTORICAL || answers.processToRun === ProcessType.LAST_PROCESSED) {
       dateRange = await promptForDates(day_0, currentDate);
     };
   };
@@ -128,6 +130,15 @@ export const selectTraveltekProcess = async (processToRun) => {
 			);
 			console.log(`\n${chalk.green(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
 			break;
+    case ProcessType.LAST_PROCESSED:
+      console.log(`\n${chalk.green('Running Historical Booking Processing for last processed date range...')}`);
+      await doLastProcessedBookings({
+        credentials: processToRun.credentials, 
+        lastProcessedStartDate: processToRun.dateRange.startDate, 
+        lastProcessedEndDate: processToRun.dateRange.endDate
+      });
+      console.log(`\n${chalk.green(`Completed historical processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
+      break;
 		default:
 			break;
 	};

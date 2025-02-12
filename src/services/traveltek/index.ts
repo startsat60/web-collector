@@ -510,10 +510,10 @@ export const doHistoricalBookings = async ({
 	historicalDataEndDate: string, 
 	statuses: string[],
 }) => {
-	// const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
+	// const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${historicalDataStartDate}&last_processed_date_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
 
 	//	debugging
-	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc&${statuses.map(status => `booking_status=${status}`).join('&')}`;
+	const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${historicalDataStartDate}&last_processed_date_to=${historicalDataEndDate}&sort_by_order=created_date asc&${statuses.map(status => `booking_status=${status}`).join('&')}`;
 
 	const existingBookings = await fetch(fetchUrl, {
 		method: 'GET',
@@ -599,6 +599,106 @@ export const doHistoricalBookings = async ({
 
 	const endTime = new Date();
 	console.log(`\nFinished checking and updating historical data. This processed bookings between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} and took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
+};
+
+export const doLastProcessedBookings = async ({
+	credentials,
+	lastProcessedStartDate,
+	lastProcessedEndDate,
+}: {
+	credentials: Credentials, 
+	lastProcessedStartDate: string, 
+	lastProcessedEndDate: string, 
+}) => {
+	// const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${lastProcessedStartDate}&last_processed_date_to=${lastProcessedEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
+
+	//	debugging
+	const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${lastProcessedStartDate}&last_processed_date_to=${lastProcessedEndDate}&sort_by_order=created_date asc`;
+
+	const existingBookings = await fetch(fetchUrl, {
+		method: 'GET',
+		headers: {
+			'Content-Type': 'application/json',
+			'Authorization': `Bearer ${bearerToken}`
+		},
+	})
+	.then((response) => response.json())
+	.then((response) => response.map(({ conversion_reference, traveltek_url }) => {
+		return {
+			referenceNumber: conversion_reference,
+			url: traveltek_url
+		}
+	}))
+	.catch((err) => {
+		console.error(`Error fetching historical bookings: ${err.message}`);
+		return [];
+	});	
+
+	if (existingBookings.length === 0) {
+		console.log(`\nNo historical tasks between ${chalk.yellow(lastProcessedStartDate)} and ${chalk.yellow(lastProcessedEndDate)} to do. Exiting...`);
+		process.exit();
+	}
+
+	const startTime = new Date();
+	console.log(`\nChecking and updating historical data from ${chalk.yellow(lastProcessedStartDate)} to ${chalk.yellow(lastProcessedEndDate)} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
+	console.log(`Syncing ${existingBookings.length} historical bookings...`);
+	let processBookingsSpinner = null;
+	const chunkSize = 200;
+	const bookingsPerChunk = 20;
+	const chunks = [];
+
+	for (let i = 0; i < existingBookings.length; i += chunkSize) {
+		chunks.push(existingBookings.slice(i, i + chunkSize));
+	}
+
+	if (chunks.length > 1) {
+		console.log(`That's quite a few bookings so they will be processed in ${chunks.length} chunks.`);
+	}
+	
+	for await (const chunk of chunks) {
+		//	launch a new browser and login for each chunk
+		let browser = await launchBrowser();
+		let page = await browser.newPage();
+
+		try {		
+			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
+			await doLogin(credentials, browser, page).then((result) => { 
+				if (!result.loggedIn) { 
+					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+					process.exit(0); 
+				} 
+				return result; 
+			});
+			browser = loginResult.browser;
+			page = loginResult.page;
+
+			for (let i = 0; i < chunk.length; i += bookingsPerChunk) {
+	
+				const arrayOfPromises = [];
+				for (let j = 0; j <= bookingsPerChunk && i + j < chunk.length; j++) {
+					arrayOfPromises.push(processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
+				}
+
+				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;
+				processBookingsSpinner = createSpinner(loggingMessage).start();
+
+				await Promise.all(arrayOfPromises);
+				processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
+			}
+		} catch (error) {
+			processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
+		} finally {
+			//	close browser between each chunk processing pass
+			page && await page.close();
+			await browser.close();
+			const sleepTimeoutMs = 5000;
+			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
+			sleep(sleepTimeoutMs);
+		}
+	};
+
+	const endTime = new Date();
+	console.log(`\nFinished checking and updating historical data. This processed bookings between ${chalk.yellow(lastProcessedStartDate)} and ${chalk.yellow(lastProcessedEndDate)} and took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
 };
 
 const dailyProcessingCanStart = (processingStartTime) => (new Date() >= new Date(`${formatDate()} ${processingStartTime}`));
@@ -694,7 +794,7 @@ export const runDailyBookingProcessing = async ({
 						ProcessingStatus.HIBERNATING;
 				} catch (err) {
 					processingStatus === null;
-					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+					console.log(`${chalk.red(`General exception occurred processing historical bookings while SLEEPING: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
 				}
@@ -712,11 +812,20 @@ export const runDailyBookingProcessing = async ({
 						credentials,
 						statuses: ['Cancelled'],
 					 });
+
+					//	Final cleanup looking for bookings that remain unprocessed before today
+					console.log(`\n${chalk.green(`Daily, active, complete and cancelled historical processing is complete. Historical bookings that remain unprocessed will be processed now...`)}`);
+					await doLastProcessedBookings({ 
+						credentials,
+						lastProcessedStartDate: process.env.HISTORICAL_PROCESSING_DAY_0 ? formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : '2020-06-01',
+						lastProcessedEndDate: formatDate(dateAdd(new Date(), -2, 'days')),
+					});
+ 
 					//	Reset the processing status to null so the loop can begin again when processing start time is reached
 					processingStatus = null;
 				} catch (err) {
 					processingStatus === null;
-					console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+					console.log(`${chalk.red(`General exception occurred processing historical bookings while HIBERNATING: ${err.message}`)}`);
 				} finally {
 					await timeout(defaultSleepTimeInMs);
 				}
@@ -740,16 +849,21 @@ export const runHistoricalBookingProcessing = async ({
 	endDate?: string, 
 	statuses?: string[]
 }) => {
-	const historicalDataStartDate = startDate ?? 
+	try {
+		const historicalDataStartDate = startDate ?? 
 		(process.env.HISTORICAL_PROCESSING_DAY_0 ? 
 			formatDate(new Date(process.env.HISTORICAL_PROCESSING_DAY_0)) : 
-			'2019-06-01'
+			'2020-06-01'
 		);	// Defaults back to day 1 or Traveltek data
-	const historicalDataEndDate = endDate ?? formatDate();
+		const historicalDataEndDate = endDate ?? formatDate();
 
-	await doHistoricalBookings({ credentials, historicalDataStartDate, historicalDataEndDate, statuses });
-	//	Let's allow some time to pass before trying again
-	await timeout(10000);
+		await doHistoricalBookings({ credentials, historicalDataStartDate, historicalDataEndDate, statuses });
+	} catch (err) {
+		console.log(`${chalk.red(`General exception occurred processing historical bookings: ${err.message}`)}`);
+	} finally {
+		//	Let's allow some time to pass before trying again
+		await timeout(10000);		
+	}
 };
 
 export const runSpecificBookingProcessing = async ({
@@ -777,7 +891,7 @@ export const runSpecificBookingProcessing = async ({
 		const bookingsData = bookingUrls.replace(/ /g, '').split(',').map(url => ({ url }));
 		await processBookings({ browser, bookingsData, showLogging: true });
 	} catch (error) {
-		console.log(`${chalk.red(`General exception occurred processing specific bookings: ${error.message}`)}`);
+		console.log(`${chalk.red(`General exception occurred processing specific historical bookings: ${error.message}`)}`);
 		throw error;
 	} finally {
 		page && await page.close();
