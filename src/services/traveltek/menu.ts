@@ -1,6 +1,6 @@
 import inquirer from "inquirer";
 import { checkbox } from '@inquirer/prompts';
-import { formatDate, sleep } from "../../helpers/lib.js";
+import { dateAdd, formatDate, sleep } from "../../helpers/lib.js";
 import { createSpinner } from "nanospinner";
 import { promptForCredentials, promptForDates } from "../../helpers/menu.js";
 import { ProcessType } from "./lib.js";
@@ -58,8 +58,11 @@ export const travelTekMenu = async () => {
     ) {
       dateRange = await promptForDates(currentDate, currentDate);
     };
-    if (answers.processToRun === ProcessType.HISTORICAL || answers.processToRun === ProcessType.LAST_PROCESSED) {
+    if (answers.processToRun === ProcessType.HISTORICAL) {
       dateRange = await promptForDates(day_0, currentDate);
+    };
+    if (answers.processToRun === ProcessType.LAST_PROCESSED) {
+      dateRange = await promptForDates(day_0, formatDate(dateAdd(new Date(), -2, 'days')));
     };
   };
 
