@@ -636,7 +636,7 @@ export const doLastProcessedBookings = async ({
 
 	if (existingBookings.length === 0) {
 		console.log(`\nNo historical tasks between ${chalk.yellow(lastProcessedStartDate)} and ${chalk.yellow(lastProcessedEndDate)} to do. Exiting...`);
-		process.exit();
+		return [];
 	}
 
 	const startTime = new Date();
