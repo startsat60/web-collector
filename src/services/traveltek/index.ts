@@ -566,13 +566,13 @@ export const doHistoricalBookings = async ({
 
 		try {		
 			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-			await doLogin(credentials, browser, page).then((result) => { 
-				if (!result.loggedIn) { 
-					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
-					process.exit(0); 
-				} 
-				return result; 
-			});
+				await doLogin(credentials, browser, page).then((result) => { 
+					if (!result.loggedIn) { 
+						console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+						process.exit(0); 
+					} 
+					return result; 
+				});
 			browser = loginResult.browser;
 			page = loginResult.page;
 
@@ -586,8 +586,27 @@ export const doHistoricalBookings = async ({
 				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;
 				processBookingsSpinner = createSpinner(loggingMessage).start();
 
-				await Promise.all(arrayOfPromises);
-				processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
+				await Promise.all(arrayOfPromises)
+				.then(() => {
+					processBookingsSpinner && processBookingsSpinner.success({ text: `${loggingMessage}Done` });
+				})
+				.catch(async (e) => {
+					page && await page.close();
+					await browser.close();
+					browser = await launchBrowser();
+					page = await browser.newPage();
+					const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
+						await doLogin(credentials, browser, page).then((result) => { 
+							if (!result.loggedIn) { 
+								processBookingsSpinner && processBookingsSpinner.error({ text: `${loggingMessage}Login failed. Cancelling execution.` });
+								console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+								process.exit(0); 
+							} 
+							return result; 
+						});
+					browser = loginResult.browser;
+					page = loginResult.page;	
+				});
 			}
 		} catch (error) {
 			processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
