@@ -351,9 +351,13 @@ export const processBookings = async ({
 				}
 			};
 		} catch (err) {
-			await browser.currentPage && browser.currentPage.close();
+			browser.currentPage && await browser.currentPage.close();
 		}
-	}));
+	}))
+	.catch(async (err) => {
+		errors.push(`${bookingReferenceNumber} - Booking data exception. Not updating. Message: ${err.message}`);
+		browser.currentPage && await browser.currentPage.close();
+	})
 
 	if (errors.length > 0) {
 		processBookingsSpinner && processBookingsSpinner.error({ text: `${loggingMessage}Error` });
