@@ -429,10 +429,10 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 		} catch (error) {
 			const waitTime = retryCounter*30000;
 			console.log(`${chalk.gray(`Login attempt ${retryCounter} failed. ${(retryCounter <= maxRetries) ? `Waiting ${waitTime/1000}secs before retrying...` : ''}: ${error.message}`)}`);
-			await timeout(retryCounter*30000);
-			browser && await browser.close();
-			browser = await launchBrowser();
-			page = await browser.newPage();
+			await timeout(retryCounter*30000).catch(() => {});
+			browser && await browser.close().catch(() => {});
+			browser = await launchBrowser().catch(() => {});
+			page = await browser.newPage().catch(() => {});
 			retryCounter++;
 		}
 	};
@@ -566,13 +566,14 @@ export const doHistoricalBookings = async ({
 
 		try {		
 			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-				await doLogin(credentials, browser, page).then((result) => { 
-					if (!result.loggedIn) { 
-						console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
-						process.exit(0); 
-					} 
-					return result; 
-				});
+				await doLogin(credentials, browser, page)
+					.then((result) => { 
+						if (!result.loggedIn) { 
+							console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+							process.exit(0); 
+						} 
+						return result; 
+					});
 			browser = loginResult.browser;
 			page = loginResult.page;
 
@@ -612,8 +613,8 @@ export const doHistoricalBookings = async ({
 			processBookingsSpinner && processBookingsSpinner.error({ text: `Error: ${error.message}` });
 		} finally {
 			//	close browser between each chunk processing pass
-			page && await page.close();
-			await browser.close();
+			page && await page.close().catch(()=> {});
+			await browser.close().catch(()=> {});
 			const sleepTimeoutMs = 5000;
 			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
 			sleep(sleepTimeoutMs);
