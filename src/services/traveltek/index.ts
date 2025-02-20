@@ -14,6 +14,7 @@ const processingEndTime = process.env.DAILY_PROCESSING_END_TIME || '21:30';
 const defaultSleepTimeInMs = process.env.DEFAULT_SLEEP_TIME_IN_MS ? 
 	Number(process.env.DEFAULT_SLEEP_TIME_IN_MS) : 
 	300000;
+let cachedCredentials: Credentials = null;
 
 export interface Booking {
 	referenceNumber?: string;
@@ -42,15 +43,24 @@ export const processBookings = async ({
 		try {
 			// const { referenceNumber } = booking;
 			// console.log(`Getting booking data for ${referenceNumber}...`);	
-			const bookingPage = await browser.newPage();
+			let bookingPage = await browser.newPage();
 			await bookingPage.goto(booking.url, { timeout: 300000 });
 			let retryCounter = 0, maxRetries = 3, retryStatus = false;
 
+			//	Retry this a few times to make sure auth is in place to mitigate later exceptions
 			while (retryCounter < maxRetries) {
 				await bookingPage.waitForSelector(`table.listtable > tbody > tr.listrow`, { timeout: 20000 })
 				.then(() => retryStatus = true)
 				.catch(async () => {
 					await timeout(10000);
+					await browser.close();
+					browser = await launchBrowser();
+					bookingPage = await browser.newPage();
+					await doLogin(
+						cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+						browser, 
+						bookingPage
+					);
 					await bookingPage.goto(booking.url, { timeout: 120000 });		
 					await timeout(10000);
 					retryCounter++;
@@ -402,6 +412,7 @@ export const getBookings = async (browser, page) => {
 };
 
 export const doLogin = async (credentials: Credentials, browser, page) => {
+	cachedCredentials = credentials;
 	let retryCounter = 1, maxRetries = 5, retryStatus = false;
 	while (retryCounter <= maxRetries) {
 		try {
@@ -463,7 +474,11 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 
 	try {
 		const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-			await doLogin(credentials, browser, page).then((result) => { 
+			await doLogin(
+				credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+				browser, 
+				page
+			).then((result) => { 
 				if (!result.loggedIn) { 
 					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
 					process.exit(0); 
@@ -567,14 +582,17 @@ export const doHistoricalBookings = async ({
 
 		try {		
 			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-				await doLogin(credentials, browser, page)
-					.then((result) => { 
-						if (!result.loggedIn) { 
-							console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
-							process.exit(0); 
-						} 
-						return result; 
-					});
+				await doLogin(
+					credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+					browser, 
+					page
+				).then((result) => { 
+					if (!result.loggedIn) { 
+						console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
+						process.exit(0); 
+					} 
+					return result; 
+				});
 			browser = loginResult.browser;
 			page = loginResult.page;
 
@@ -582,7 +600,7 @@ export const doHistoricalBookings = async ({
 	
 				const arrayOfPromises = [];
 				for (let j = 0; j <= bookingsPerChunk && i + j < chunk.length; j++) {
-					arrayOfPromises.push(processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
+					arrayOfPromises.push(await processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
 				}
 
 				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;
@@ -598,7 +616,11 @@ export const doHistoricalBookings = async ({
 					browser = await launchBrowser();
 					page = await browser.newPage();
 					const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-						await doLogin(credentials, browser, page).then((result) => { 
+						await doLogin(
+							credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+							browser, 
+							page
+						).then((result) => { 
 							if (!result.loggedIn) { 
 								processBookingsSpinner && processBookingsSpinner.error({ text: `${loggingMessage}Login failed. Cancelling execution.` });
 								console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
@@ -687,7 +709,11 @@ export const doLastProcessedBookings = async ({
 
 		try {		
 			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-			await doLogin(credentials, browser, page).then((result) => { 
+			await doLogin(
+				credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+				browser, 
+				page
+			).then((result) => { 
 				if (!result.loggedIn) { 
 					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
 					process.exit(0); 
@@ -747,12 +773,13 @@ export const runDailyBookingProcessing = async ({
 	historicalProcessHasExecuted?: boolean
 }) => {
 	const daysAgoToProcessDaily = (Number(process.env.DAYS_AGO_TO_PROCESS_IN_DAILY_PROCESS)) || 0;
-	let processingStatus: ProcessingStatus | null = null,
+	let processingStatus: ProcessingStatus | null | undefined = undefined,
 		hibernationSpinner = null,
 		runHistoricalProcessEvery = 10,	//	Every 10 iterations, process historical bookings
 		runHistorialProcessCounter = 0;
 
 	while (
+		processingStatus === undefined || 
 		processingStatus === null || 
 		processingStatus === ProcessingStatus.IN_PROGRESS ||
 		processingStatus === ProcessingStatus.SLEEPING || 
@@ -771,7 +798,7 @@ export const runDailyBookingProcessing = async ({
 			const browser = await launchBrowser();
 			try {
 				await processLiveBookings(credentials, browser, startDate, endDate);
-				await browser && browser.close();
+				browser && await browser.close();
 
 				console.log(`\nDaily processing completed for ${startDate} to ${endDate}.`);
 
@@ -856,8 +883,8 @@ export const runDailyBookingProcessing = async ({
 				}
 			} else {
 				!hibernationSpinner && (hibernationSpinner = createSpinner(`${chalk.green(`Hibernating bookings processing until ${processingStartTime}...`)}`).start());
-				processingStatus = null;
-				await timeout(defaultSleepTimeInMs);
+				processingStatus = processingStatus === undefined ? ProcessingStatus.HIBERNATING : null;
+				await timeout(10000);
 			}
 		}
 	}
@@ -903,7 +930,11 @@ export const runSpecificBookingProcessing = async ({
 
 	try {
 		const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
-			await doLogin(credentials, browser, page).then((result) => { 
+			await doLogin(
+				credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
+				browser, 
+				page
+			).then((result) => { 
 				if (!result.loggedIn) { 
 					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
 					process.exit(0); 
