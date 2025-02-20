@@ -299,26 +299,27 @@ export const processBookings = async ({
 			await bookingPage.waitForSelector(passengerSelector, { timeout: 10000 })
 			.then(async () => {
 				await bookingPage.click(passengerSelector);
-				bookingData[0].additional_data['primary_passenger'] = await bookingPage.waitForSelector(`.boxstyle1`, { timeout: 5000 })
-				.then(async () => {
-					//	Allow errors to fall out to the catch block
-					return await bookingPage.evaluate(() => {
-						const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
-						const passengerName = passengerContactDetailsElement[1].textContent.trim();
-						const passengerEmail = passengerContactDetailsElement[41].textContent.trim();
-						const passengerPhone = passengerContactDetailsElement[31].textContent.trim();
-						const passengerDOB = passengerContactDetailsElement[9].textContent.trim();
-						const passengerPostcode = passengerContactDetailsElement[29].textContent.trim();
-			
-						return {
-							name: passengerName,
-							email: passengerEmail,
-							phone: passengerPhone,
-							dob: passengerDOB,
-							postcode: passengerPostcode,
-						};
-					});
-				})
+				bookingData[0].additional_data['primary_passenger'] = 
+					await bookingPage.waitForSelector(`.boxstyle1`, { timeout: 5000 })
+					.then(async () => {
+						//	Allow errors to fall out to the catch block
+						return await bookingPage.evaluate(() => {
+							const passengerContactDetailsElement = document.querySelectorAll(`h3 + table td`);
+							const passengerName = passengerContactDetailsElement[1].textContent.trim();
+							const passengerEmail = passengerContactDetailsElement[41].textContent.trim();
+							const passengerPhone = passengerContactDetailsElement[31].textContent.trim();
+							const passengerDOB = passengerContactDetailsElement[9].textContent.trim();
+							const passengerPostcode = passengerContactDetailsElement[29].textContent.trim();
+				
+							return {
+								name: passengerName,
+								email: passengerEmail,
+								phone: passengerPhone,
+								dob: passengerDOB,
+								postcode: passengerPostcode,
+							};
+						});
+					})
 			})
 			.catch(async (e) => {
 				//	Customer page load exception. Updating with default data.
@@ -404,7 +405,7 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 	let retryCounter = 1, maxRetries = 5, retryStatus = false;
 	while (retryCounter <= maxRetries) {
 		try {
-			page.goto(loginUrl, { timeout: 120000 });
+			await page.goto(loginUrl, { timeout: 120000 });
 			const usernameSelector = `[name='username']`;
 			await page.waitForSelector(usernameSelector, { timeout: 20000 });
 			await page.type(`[name='username']`, credentials.username, { delay: 10 });
@@ -432,6 +433,7 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 			await timeout(retryCounter*30000).catch(() => {});
 			browser && await browser.close().catch(() => {});
 			browser = await launchBrowser().catch(() => {});
+			browser.currentPage && await browser.currentPage.close().catch(() => {});
 			page = await browser.newPage().catch(() => {});
 			retryCounter++;
 		}
@@ -700,7 +702,7 @@ export const doLastProcessedBookings = async ({
 	
 				const arrayOfPromises = [];
 				for (let j = 0; j <= bookingsPerChunk && i + j < chunk.length; j++) {
-					arrayOfPromises.push(processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
+					arrayOfPromises.push(await processBookings({ browser, bookingsData: [chunk[i + j]], showLogging: false }));
 				}
 
 				const loggingMessage = `Syncing records ${i + 1} - ${i + arrayOfPromises.length} of next ${chunk.length} historical bookings starting at ${chunk[i]?.referenceNumber}...`;

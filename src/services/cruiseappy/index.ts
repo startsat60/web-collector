@@ -10,7 +10,7 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 	let retryCounter = 1, maxRetries = 5, retryStatus = false;
 	while (retryCounter <= maxRetries) {
 		try {
-			page.goto(loginUrl, { timeout: 120000 });
+			await page.goto(loginUrl, { timeout: 120000 });
 			const usernameSelector = `[name='username']`;
 			await page.waitForSelector(usernameSelector, { timeout: 20000 });
 			await page.type(`[name='username']`, credentials.username, { delay: 10 });
