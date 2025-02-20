@@ -617,7 +617,7 @@ export const doHistoricalBookings = async ({
 			await browser.close().catch(()=> {});
 			const sleepTimeoutMs = 5000;
 			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
-			sleep(sleepTimeoutMs);
+			await sleep(sleepTimeoutMs);
 		}
 	};
 
@@ -717,7 +717,7 @@ export const doLastProcessedBookings = async ({
 			await browser.close();
 			const sleepTimeoutMs = 5000;
 			console.log(`${chalk.yellow(`Finished chunk processing. Sleeping for ${sleepTimeoutMs/1000} seconds before continuing...`)}`);
-			sleep(sleepTimeoutMs);
+			await sleep(sleepTimeoutMs);
 		}
 	};
 
