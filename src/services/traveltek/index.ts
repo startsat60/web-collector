@@ -542,7 +542,6 @@ export const doHistoricalBookings = async ({
 
 	if (existingBookings.length === 0) {
 		console.log(`\nNo historical tasks between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} to do. Exiting...`);
-		process.exit();
 	}
 
 	const startTime = new Date();
