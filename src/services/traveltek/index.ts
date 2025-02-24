@@ -580,7 +580,11 @@ export const doHistoricalBookings = async ({
 		let browser = await launchBrowser();
 		let page = await browser.newPage();
 
-		try {		
+		try {
+			if (withinDailyProcessingWindow()) {
+				await sleep(defaultSleepTimeInMs);
+				throw new Error(`Daily processing window has become active. Exiting this process to begin Daily processing...`);
+			}
 			const loginResult: { browser: Browser, page: any, loggedIn: boolean } = 
 				await doLogin(
 					credentials ?? cachedCredentials ?? { username: process.env.TRAVELTEK_USERNAME, password: process.env.TRAVELTEK_PASSWORD }, 
