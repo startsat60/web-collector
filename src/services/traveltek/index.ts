@@ -428,10 +428,10 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 			const loginButtonSelector = `[type='submit']`;
 			await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
 			await page.click(loginButtonSelector);
+			await page.waitForNavigation({ waitUntil: 'networkidle0' });
 			await page.evaluate(async () => {
 				if (!document.querySelector(`input[name='username']`)) {
 					//	Login page has not simply reloaded due to failure
-					page.waitForNavigation({ waitUntil: 'networkidle0' });
 					return true;
 				}
 				throw new Error(`Login page re-loaded. Trying again.`);
