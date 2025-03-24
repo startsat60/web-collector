@@ -480,7 +480,6 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 				browser, 
 				page
 			).then((result) => {
-				console.log(`Login result: ${result.loggedIn}`);
 				if (!result.loggedIn) { 
 					console.log(`${chalk.red('Login failed. Cancelling execution.')}`); 
 					process.exit(0); 
