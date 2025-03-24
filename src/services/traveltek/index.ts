@@ -429,6 +429,7 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 			await page.waitForSelector(loginButtonSelector, { timeout: 20000 });
 			await page.click(loginButtonSelector);
 			await page.evaluate(async () => {
+				await sleep(5000);
 				if (!document.querySelector(`input[name='username']`)) {
 					//	Login page has not simply reloaded due to failure
 					return true;
