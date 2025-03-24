@@ -435,13 +435,14 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 				}
 				throw new Error(`Login page re-loaded. Trying again.`);
 			})
-			.then(() => retryStatus = true);
+			.then(() => retryStatus = true)
+			.catch((e) => { console.log(`Logging in error: ${e.message}`); process.exit(0); });
 
 			if (retryStatus) break;
 		} catch (error) {
 			const waitTime = retryCounter*30000;
 			console.log(`${chalk.gray(`Login attempt ${retryCounter} failed. ${(retryCounter <= maxRetries) ? `Waiting ${waitTime/1000}secs before retrying...` : ''}: ${error.message}`)}`);
-			await timeout(retryCounter*30000).catch(() => {});
+			await timeout(waitTime).catch(() => {});
 			browser && await browser.close().catch(() => {});
 			browser = await launchBrowser().catch(() => {});
 			browser.currentPage && await browser.currentPage.close().catch(() => {});
