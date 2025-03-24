@@ -436,8 +436,7 @@ export const doLogin = async (credentials: Credentials, browser, page) => {
 				}
 				throw new Error(`Login page re-loaded. Trying again.`);
 			})
-			.then(() => retryStatus = true)
-			.catch((e) => { console.log(`Logging in error: ${e.message}`); process.exit(0); });
+			.then(() => retryStatus = true);
 
 			if (retryStatus) break;
 		} catch (error) {
