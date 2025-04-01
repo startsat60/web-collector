@@ -3,7 +3,6 @@ import { selectTraveltekProcess, travelTekMenu } from "./services/traveltek/menu
 import { welcome } from "./helpers/lib.js";
 import { servicesMenu } from "./helpers/menu.js";
 import { cruiseAppyMenu, selectCruiseAppyProcess } from "./services/cruiseappy/menu.js";
-import { runDailyBookingProcessing } from "./services/traveltek/index.js";
 
 (async () => {
 	const args = process.argv.slice(2);
@@ -31,11 +30,11 @@ import { runDailyBookingProcessing } from "./services/traveltek/index.js";
 				const endDate = new Date().toISOString().split('T')[0];
 
 				console.log(`\n${chalk.green(`Running Traveltek Process for ${startDate} to ${endDate} using ${credentials.username} login...`)}`);
-				await runDailyBookingProcessing({
-					credentials,
-					startDate,
-					endDate,
-				});
+				// await runDailyBookingProcessing({
+				// 	credentials,
+				// 	startDate,
+				// 	endDate,
+				// });
 			} else if (service === 'CRUISEAPPY') {
 				console.log(`\n${chalk.green('Running CruiseAppy Process...')}`);
 				await selectCruiseAppyProcess(await cruiseAppyMenu());
