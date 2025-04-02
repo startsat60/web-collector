@@ -115,7 +115,7 @@ export const selectTraveltekProcess = async (processToRun) => {
 				historicalDataEndDate: processToRun.dateRange.endDate,
 				statuses: processToRun.statuses,
 			});
-			break;
+			console.log(`\n${chalk.green(`Completed processing historical bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
 		// case ProcessType.SPECIFIC_BOOKING:
 		// 	console.log(`\n${chalk.green('Running Specified Booking Processing...')}`);
 		// 	await runSpecificBookingProcessing({
@@ -132,7 +132,6 @@ export const selectTraveltekProcess = async (processToRun) => {
 				processToRun.dateRange.endDate
 			);
 			console.log(`\n${chalk.green(`Completed live processing of bookings for ${processToRun.dateRange.startDate} to ${processToRun.dateRange.endDate}.\n`)}`);
-			break;
     // case ProcessType.LAST_PROCESSED:
     //   console.log(`\n${chalk.green('Running Historical Booking Processing for last processed date range...')}`);
     //   await doLastProcessedBookings({

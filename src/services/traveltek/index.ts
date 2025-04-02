@@ -461,8 +461,9 @@ export const processLiveBookings = async (credentials: Credentials, browser?: Br
 	} catch (error) {
 		console.log(`${chalk.red(`General exception processing live bookings: ${error.message}`)}`);
 	} finally {
-		// page && await page.close();
-		// browser && await browser.close();
+		page && await page.close();
+		browser && await browser.close();
+		process.exit(0);
 	}
 };
 
@@ -480,7 +481,7 @@ export const doHistoricalBookings = async ({
 	// const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${historicalDataStartDate}&last_processed_date_to=${historicalDataEndDate}&departure_date_from=${new Date().toISOString().split('T')[0]}&booking_status=Changed&booking_status=Query&booking_status=Open&booking_status=Complete&booking_status=Cancelled&sort_by_order=created_date asc`;
 
 	//	debugging
-	const fetchUrl = `${apiUrlBase}/search?last_processed_date_from=${historicalDataStartDate}&last_processed_date_to=${historicalDataEndDate}&sort_by_order=created_date asc&${statuses.map(status => `booking_status=${status}`).join('&')}`;
+	const fetchUrl = `${apiUrlBase}/search?booked_on_from=${historicalDataStartDate}&booked_on_to=${historicalDataEndDate}&sort_by_order=created_date asc&${statuses.map(status => `booking_status=${status}`).join('&')}`;
 
 	const existingBookings = await fetch(fetchUrl, {
 		method: 'GET',
@@ -506,8 +507,8 @@ export const doHistoricalBookings = async ({
 	}
 
 	const startTime = new Date();
-	console.log(`\nChecking and updating historical data from ${chalk.yellow(historicalDataStartDate)} to ${chalk.yellow(historicalDataEndDate)} and it looks like there are ${existingBookings.length} records to get.\nThis takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
-	console.log(`${dayjs().format('YYYY-MM-DD HH:mm')}: Syncing ${existingBookings.length} historical bookings...`);
+	console.log(`\n${chalk.yellow(dayjs().format('YYYY-MM-DD HH:mm'))}: Checking and updating historical data last processed between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} and it looks like there are ${existingBookings.length} records to get. This takes a while so let's mark the start time as ${startTime.toLocaleTimeString()}.`);
+	console.log(`\n${chalk.yellow(dayjs().format('YYYY-MM-DD HH:mm'))}: Syncing ${existingBookings.length} historical bookings...`);
 	const chunkSize = 200;
 	const bookingsPerChunk = 20;
 	const chunks = [];
@@ -546,7 +547,7 @@ export const doHistoricalBookings = async ({
 			// 	await processEachBooking({ url, bookingReference, browser });
 			// }
 	
-			console.log(`${dayjs().format('YYYY-MM-DD HH:mm')}: Syncing records in chunk...`);
+			console.log(`${chalk.yellow(dayjs().format('YYYY-MM-DD HH:mm'))}: Syncing records in chunk...`);
 			for (const row of chunk) {
 				const { referenceNumber, url } = row;
 				await processEachBooking({
@@ -561,10 +562,11 @@ export const doHistoricalBookings = async ({
 			//	close browser between each chunk processing pass
 			page && await page.close().catch(()=> {});
 			await browser.close().catch(()=> {});
-			console.log(`${dayjs().format('YYYY-MM-DD HH:mm')}: ${chalk.yellow(`Finished chunk processing.`)}`);
+			console.log(`${chalk.yellow(dayjs().format('YYYY-MM-DD HH:mm'))}: ${chalk.yellow(`Finished chunk processing.`)}`);
 		}
 	};
 
 	const endTime = new Date();
 	console.log(`\nFinished checking and updating historical data. This processed bookings between ${chalk.yellow(historicalDataStartDate)} and ${chalk.yellow(historicalDataEndDate)} and took about ${parseInt(((endTime.getTime() - startTime.getTime())/1000/60).toString())} minutes.`);
+	process.exit(0);
 };
