@@ -186,22 +186,25 @@ export const processEachBooking = async ({
 	const costingsSelector = `[href*='costingbreakdown']`;
 	await bookingPage.waitForSelector(costingsSelector, { timeout: 20000 });
 	await bookingPage.click(costingsSelector);
-	await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`, { timeout: 20000 })
+	const costingsData = await bookingPage.waitForSelector(`[href*='bofinancial.pl?action=costing_add']`, { timeout: 20000 })
+		.then(async () => 
+			await bookingPage.evaluate(() => {
+				const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
+				return {
+					nett: costingsElement[5].textContent.trim(),
+					gross: costingsElement[6].textContent.trim(),
+					apportioned: costingsElement[7].textContent.trim(),
+					unapportioned: costingsElement[8].textContent.trim(),
+					extra_margin: costingsElement[9].textContent.trim(),
+					commission: costingsElement[10].textContent.trim(),
+					gst: costingsElement[11].textContent.trim(),
+				};
+			})		
+		)
 		.catch(async (e) => {
 			processBookingSpinner.error({ text: `${loggingMessage}Error: failed processing Costings.` });
+			return {};
 		});
-	const costingsData = await bookingPage.evaluate(() => {
-		const costingsElement = document.querySelectorAll(`.listtable #rtotalrow td`);
-		return {
-			nett: costingsElement[5].textContent.trim(),
-			gross: costingsElement[6].textContent.trim(),
-			apportioned: costingsElement[7].textContent.trim(),
-			unapportioned: costingsElement[8].textContent.trim(),
-			extra_margin: costingsElement[9].textContent.trim(),
-			commission: costingsElement[10].textContent.trim(),
-			gst: costingsElement[11].textContent.trim(),
-		};
-	});
 	bookingData[0].additional_data['total_costings'] = costingsData;
 	//#endregion Costings
 
@@ -210,52 +213,55 @@ export const processEachBooking = async ({
 	const receiptsSelector = `[href*='receipts']`;
 	await bookingPage.waitForSelector(receiptsSelector, { timeout: 20000 });
 	await bookingPage.click(receiptsSelector);
-	await bookingPage.waitForSelector(`[href*='cardpayment.pl']`, { timeout: 20000 })
+	const receiptsData = await bookingPage.waitForSelector(`[href*='cardpayment.pl']`, { timeout: 20000 })
+		.then(async () => 
+			await bookingPage.evaluate(() => {
+				const receipts = [];
+				const receiptTables = document.querySelectorAll(`.listtable`);
+				// if (receiptTables.length === 0) return receipts;
+		
+				for (let i=0; i < receiptTables.length; i++) {
+					const firstRowCellSelector = receiptTables[i].querySelector(`.listheader td:nth-child(3)`);
+					if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reference') {
+						//	Receipts
+						const receiptsRows = receiptTables[i].querySelectorAll(`.listrow`);
+						receiptsRows.forEach((receipt) => {
+							receipts.push({
+								id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
+								reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
+								date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
+								payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
+								total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
+								card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
+								unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
+								type: 'receipt',
+							});
+						});		
+					};
+		
+					if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reason') {
+						//	Refunds
+						const refundRows = receiptTables[i].querySelectorAll(`.listrow`);
+						refundRows.forEach((refund) => {
+							receipts.push({
+								id: refund.querySelector(`td:nth-child(1)`).textContent.trim(),
+								reference: refund.querySelector(`td:nth-child(3)`).textContent.trim(),
+								date: refund.querySelector(`td:nth-child(2)`).textContent.trim(),
+								payment_method: refund.querySelector(`td:nth-child(4)`).textContent.trim(),
+								total_value: refund.querySelector(`td:nth-child(7)`).textContent.trim(),
+								card_fee: null,
+								unapportioned_amount: null,
+								type: 'refund',
+							});
+						});
+					};
+				};
+				return receipts;
+			})
+	)		
 	.catch(async (e) => {
 		processBookingSpinner.error({ text: `${loggingMessage}Error: failed processing Receipts.` });
-	});
-	const receiptsData = await bookingPage.evaluate(() => {
-		const receipts = [];
-		const receiptTables = document.querySelectorAll(`.listtable`);
-		// if (receiptTables.length === 0) return receipts;
-
-		for (let i=0; i < receiptTables.length; i++) {
-			const firstRowCellSelector = receiptTables[i].querySelector(`.listheader td:nth-child(3)`);
-			if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reference') {
-				//	Receipts
-				const receiptsRows = receiptTables[i].querySelectorAll(`.listrow`);
-				receiptsRows.forEach((receipt) => {
-					receipts.push({
-						id: receipt.querySelector(`td:nth-child(2)`).textContent.trim(),
-						reference: receipt.querySelector(`td:nth-child(3)`).textContent.trim(),
-						date: receipt.querySelector(`td:nth-child(4)`).textContent.trim(),
-						payment_method: receipt.querySelector(`td:nth-child(5)`).textContent.trim(),
-						total_value: receipt.querySelector(`td:nth-child(6)`).textContent.trim(),
-						card_fee: receipt.querySelector(`td:nth-child(7)`).textContent.trim(),
-						unapportioned_amount: receipt.querySelector(`td:nth-child(8)`).textContent.trim(),
-						type: 'receipt',
-					});
-				});		
-			};
-
-			if (firstRowCellSelector && firstRowCellSelector.textContent.trim().toLowerCase() === 'reason') {
-				//	Refunds
-				const refundRows = receiptTables[i].querySelectorAll(`.listrow`);
-				refundRows.forEach((refund) => {
-					receipts.push({
-						id: refund.querySelector(`td:nth-child(1)`).textContent.trim(),
-						reference: refund.querySelector(`td:nth-child(3)`).textContent.trim(),
-						date: refund.querySelector(`td:nth-child(2)`).textContent.trim(),
-						payment_method: refund.querySelector(`td:nth-child(4)`).textContent.trim(),
-						total_value: refund.querySelector(`td:nth-child(7)`).textContent.trim(),
-						card_fee: null,
-						unapportioned_amount: null,
-						type: 'refund',
-					});
-				});
-			};
-		};
-		return receipts;
+		return [];
 	});
 	bookingData[0].additional_data['receipts'] = receiptsData ?? [];
 	//#endregion Receipts
